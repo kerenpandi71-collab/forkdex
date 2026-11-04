@@ -690,7 +690,9 @@ public final class MainActivity extends Activity {
     private void populateDrawerApps(List<ResolveInfo> source, List<LauncherActivityInfo> cloneSource) {
         if (drawerApps == null) return;
         drawerApps.removeAllViews();
-        List<View> tiles = new ArrayList<>();
+        List<View> normalTiles = new ArrayList<>();
+        List<View> cloneTiles = new ArrayList<>();
+
         for (ResolveInfo app : source) {
             String pkg = app.activityInfo.packageName;
             if (isHiddenApp(pkg)) continue;
@@ -715,11 +717,13 @@ public final class MainActivity extends Activity {
             addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchSelectedApp(app); });
             tile.setOnLongClickListener(v -> { showAppActions(app); return true; });
-            tiles.add(tile);
+            normalTiles.add(tile);
         }
+
         for (LauncherActivityInfo clone : cloneSource) {
-            String name = clone.getLabel() == null
-                    ? clone.getComponentName().getPackageName() : clone.getLabel().toString();
+            String pkg = clone.getComponentName().getPackageName();
+            if (isHiddenApp(pkg)) continue;
+            String name = clone.getLabel() == null ? pkg : clone.getLabel().toString();
             LinearLayout tile = new LinearLayout(this);
             tile.setOrientation(LinearLayout.VERTICAL);
             tile.setGravity(Gravity.CENTER);
@@ -734,39 +738,64 @@ public final class MainActivity extends Activity {
             label.setMaxLines(2);
             label.setIncludeFontPadding(false);
             tile.addView(label, new LinearLayout.LayoutParams(-1, dp(32)));
-            tile.setContentDescription(name + ", profil lain");
+            tile.setContentDescription(name + ", aplikasi clone");
             tile.setBackgroundColor(Color.TRANSPARENT);
-            tile.setTooltipText(name + " · Profil lain");
+            tile.setTooltipText(name + " · Clone");
             addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchClonedApp(clone); });
             tile.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
-            tiles.add(tile);
+            cloneTiles.add(tile);
         }
+
+        if (!normalTiles.isEmpty()) {
+            addDrawerGroupTitle("Aplikasi utama");
+            addDrawerTileGroup(normalTiles);
+        }
+        if (!cloneTiles.isEmpty()) {
+            addDrawerGroupTitle("Aplikasi Clone");
+            addDrawerTileGroup(cloneTiles);
+        }
+        if (normalTiles.isEmpty() && cloneTiles.isEmpty()) {
+            TextView empty = text("Tidak ada aplikasi yang cocok. Coba kata kunci lain.", 13, false);
+            empty.setTextColor(0xFFB8C3D3);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(20), dp(16), dp(20), dp(16));
+            empty.setContentDescription("Pencarian tidak menemukan aplikasi");
+            drawerApps.addView(empty, new LinearLayout.LayoutParams(-1, dp(96)));
+        }
+    }
+
+    private void addDrawerGroupTitle(String title) {
+        TextView heading = text(title, 13, true);
+        heading.setTextColor(0xFFDCE8FA);
+        heading.setGravity(Gravity.CENTER_VERTICAL);
+        heading.setPadding(dp(5), dp(4), 0, dp(2));
+        drawerApps.addView(heading, new LinearLayout.LayoutParams(-1, dp(32)));
+    }
+
+    private void addDrawerTileGroup(List<View> tiles) {
         if (isDrawerListView()) {
-            for (int i = 0; i < tiles.size(); i++) {
-                // Rebuild each app entry as a flat row: no tile/card background.
-                View tile = tiles.get(i);
-                if (tile instanceof LinearLayout) {
-                    LinearLayout item = (LinearLayout) tile;
-                    item.setOrientation(LinearLayout.HORIZONTAL);
-                    item.setGravity(Gravity.CENTER_VERTICAL);
-                    item.setPadding(dp(10), dp(4), dp(10), dp(4));
-                    ImageView icon = (ImageView) item.getChildAt(0);
-                    LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(40), dp(40));
-                    item.updateViewLayout(icon, iconParams);
-                    TextView label = (TextView) item.getChildAt(1);
-                    label.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
-                    label.setTextSize(14);
-                    LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -1, 1f);
-                    labelParams.setMargins(dp(14), 0, 0, 0);
-                    item.updateViewLayout(label, labelParams);
-                    item.setBackgroundColor(Color.TRANSPARENT);
-                    LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(56));
-                    rowParams.setMargins(0, dp(1), 0, dp(1));
-                    drawerApps.addView(item, rowParams);
-                }
+            for (View tile : tiles) {
+                LinearLayout item = (LinearLayout) tile;
+                item.setOrientation(LinearLayout.HORIZONTAL);
+                item.setGravity(Gravity.CENTER_VERTICAL);
+                item.setPadding(dp(10), dp(4), dp(10), dp(4));
+                ImageView icon = (ImageView) item.getChildAt(0);
+                LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(40), dp(40));
+                item.updateViewLayout(icon, iconParams);
+                TextView label = (TextView) item.getChildAt(1);
+                label.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
+                label.setTextSize(14);
+                LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -1, 1f);
+                labelParams.setMargins(dp(14), 0, 0, 0);
+                item.updateViewLayout(label, labelParams);
+                item.setBackgroundColor(Color.TRANSPARENT);
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(56));
+                rowParams.setMargins(0, dp(1), 0, dp(1));
+                drawerApps.addView(item, rowParams);
             }
-        } else {
+            return;
+        }
         float density = getResources().getDisplayMetrics().density;
         int panelWidthPx = appDrawer != null && appDrawer.getLayoutParams() != null
                 ? appDrawer.getLayoutParams().width : getResources().getDisplayMetrics().widthPixels;
@@ -777,24 +806,14 @@ public final class MainActivity extends Activity {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             for (int j = i; j < Math.min(i + columns, tiles.size()); j++) {
-                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(94), 1f);
+                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(88), 1f);
                 cell.setMargins(dp(3), dp(2), dp(3), dp(2));
                 row.addView(tiles.get(j), cell);
             }
             for (int j = Math.min(i + columns, tiles.size()); j < i + columns; j++) {
-                View empty = new View(this);
-                row.addView(empty, new LinearLayout.LayoutParams(0, dp(94), 1f));
+                row.addView(new View(this), new LinearLayout.LayoutParams(0, dp(88), 1f));
             }
-            drawerApps.addView(row, new LinearLayout.LayoutParams(-1, dp(98)));
-        }
-        }
-        if (tiles.isEmpty()) {
-            TextView empty = text("Tidak ada aplikasi yang cocok. Coba kata kunci lain.", 13, false);
-            empty.setTextColor(0xFFB8C3D3);
-            empty.setGravity(Gravity.CENTER);
-            empty.setPadding(dp(20), dp(16), dp(20), dp(16));
-            empty.setContentDescription("Pencarian tidak menemukan aplikasi");
-            drawerApps.addView(empty, new LinearLayout.LayoutParams(-1, dp(96)));
+            drawerApps.addView(row, new LinearLayout.LayoutParams(-1, dp(92)));
         }
     }
 
@@ -806,6 +825,7 @@ public final class MainActivity extends Activity {
                 options.setLaunchDisplayId(currentDisplayId());
             launcherApps.startMainActivity(clone.getComponentName(), clone.getUser(),
                     new Rect(), options.toBundle());
+            applySavedProfileAfterLaunch(clone.getComponentName().getPackageName(), currentDisplayId());
             Toast.makeText(this, "Membuka salinan aplikasi: " + clone.getLabel(),
                     Toast.LENGTH_SHORT).show();
         } catch (Throwable error) {
@@ -1305,6 +1325,7 @@ public final class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= 26 && currentDisplayId() != Display.DEFAULT_DISPLAY)
                 options.setLaunchDisplayId(currentDisplayId());
             startActivity(intent, options.toBundle());
+            applySavedProfileAfterLaunch(app.activityInfo.packageName, currentDisplayId());
         } catch (Throwable error) {
             ForkdexErrorLog.add(this, "Launch normal window " + app.activityInfo.packageName, error);
             Toast.makeText(this, "Gagal membuka aplikasi: " + error.getMessage(), Toast.LENGTH_LONG).show();
@@ -1353,8 +1374,8 @@ public final class MainActivity extends Activity {
             int percent = profiles.getInt(pkg, 100);
             if (result != null && result.startsWith("FREEFORM_LAUNCH_ACCEPTED:") && percent != 100) {
                 try {
-                    Thread.sleep(900L);
-                    int density = Math.max(72, Math.round(getResources().getDisplayMetrics().densityDpi * percent / 100f));
+                    Thread.sleep(700L);
+                    int density = densityForPercent(percent);
                     String dpiResult = windowClient.setPackageDensity(targetDisplayId, pkg, density);
                     result = result + " • " + dpiResult;
                 } catch (Exception error) {
@@ -1655,9 +1676,58 @@ public final class MainActivity extends Activity {
             .setNegativeButton("Batal", null).show();
     }
 
+    private int densityForPercent(int percent) {
+        return Math.max(72, Math.round(getResources().getDisplayMetrics().densityDpi
+                * percent / 100f));
+    }
+
+    private void applySavedProfileAfterLaunch(String packageName, int displayId) {
+        int percent = profiles.getInt(packageName, 100);
+        if (percent == 100) return;
+        if (shizuku != null && shizuku.hasPermission() && !windowClient.isConnected()) {
+            windowClient.connect();
+        }
+        new Thread(() -> {
+            String last = "NO_MATCHING_TASK: task aplikasi belum siap";
+            for (int attempt = 0; attempt < 8; attempt++) {
+                try {
+                    Thread.sleep(attempt == 0 ? 450L : 500L);
+                    if (!windowClient.isConnected()) {
+                        if (shizuku != null && shizuku.hasPermission()) windowClient.connect();
+                        continue;
+                    }
+                    last = windowClient.setPackageDensity(displayId, packageName,
+                            densityForPercent(percent));
+                    if (last != null && last.startsWith("TASK_DENSITY_APPLIED:")) {
+                        ForkdexErrorLog.add(this, "Per-App DPI applied after launch",
+                                packageName + " • " + percent + "% • " + last);
+                        return;
+                    }
+                } catch (Throwable error) {
+                    last = "DPI_RETRY_ERROR: " + error.getMessage();
+                }
+            }
+            ForkdexErrorLog.add(this, "Per-App DPI retry exhausted",
+                    packageName + " • " + percent + "% • " + last);
+            final String message = last;
+            runOnUiThread(() -> Toast.makeText(this,
+                    "Profil DPI tersimpan, tetapi belum berhasil diterapkan: " + message,
+                    Toast.LENGTH_LONG).show());
+        }, "Forkdex-DPI-Restore").start();
+    }
+
     private void applyProfileDensity(String packageName, int densityDpi) {
+        if (densityDpi == 0) {
+            Toast.makeText(this, "Profil DPI dihapus. Aplikasi akan mengikuti DPI sistem saat dibuka ulang.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         if (!windowClient.isConnected()) {
-            Toast.makeText(this, "Profil tersimpan. Sambungkan Shizuku untuk menerapkan DPI.", Toast.LENGTH_LONG).show();
+            if (shizuku != null && shizuku.hasPermission()) windowClient.connect();
+        }
+        if (!windowClient.isConnected()) {
+            Toast.makeText(this, "Profil tersimpan. Shizuku diperlukan untuk menerapkan DPI ke task aplikasi.",
+                    Toast.LENGTH_LONG).show();
             return;
         }
         int displayId = currentDisplayId();
@@ -1671,7 +1741,8 @@ public final class MainActivity extends Activity {
             final String message = result;
             runOnUiThread(() -> {
                 if (message.startsWith("NO_MATCHING_TASK:")) {
-                    Toast.makeText(this, "Profil tersimpan. DPI akan diterapkan otomatis saat aplikasi dibuka lewat Forkdex.", Toast.LENGTH_LONG).show();
+                    Toast.makeText(this, "Profil DPI tersimpan. DPI akan diterapkan ulang otomatis setiap aplikasi dibuka lewat Forkdex, termasuk mode normal.",
+                            Toast.LENGTH_LONG).show();
                 } else if (message.startsWith("TASK_DENSITY_APPLIED:")) {
                     Toast.makeText(this, "Profil DPI berhasil diterapkan ke task aktif.", Toast.LENGTH_LONG).show();
                 } else {
