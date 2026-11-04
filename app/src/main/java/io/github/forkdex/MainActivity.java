@@ -602,11 +602,54 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private static final int REQUEST_UNINSTALL_APP = 4107;
+
     private void requestUninstall(String pkg) {
+        if (pkg == null || pkg.trim().isEmpty()) {
+            Toast.makeText(this, "Paket aplikasi tidak valid.", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (getPackageName().equals(pkg)) {
+            Toast.makeText(this, "Forkdex tidak dapat menghapus dirinya sendiri dari menu ini.",
+                    Toast.LENGTH_LONG).show();
+            return;
+        }
         try {
-            startActivity(new Intent(Intent.ACTION_DELETE, android.net.Uri.parse("package:" + pkg)));
+            Intent uninstall = new Intent(Intent.ACTION_UNINSTALL_PACKAGE,
+                    android.net.Uri.parse("package:" + pkg));
+            uninstall.putExtra(Intent.EXTRA_RETURN_RESULT, true);
+            if (uninstall.resolveActivity(getPackageManager()) == null) {
+                // Compatibility fallback for Android builds exposing only ACTION_DELETE.
+                uninstall = new Intent(Intent.ACTION_DELETE,
+                        android.net.Uri.parse("package:" + pkg));
+            }
+            if (uninstall.resolveActivity(getPackageManager()) == null) {
+                Toast.makeText(this, "Pemasang Android tidak menyediakan opsi uninstall untuk aplikasi ini.",
+                        Toast.LENGTH_LONG).show();
+                return;
+            }
+            startActivityForResult(uninstall, REQUEST_UNINSTALL_APP);
+        } catch (SecurityException error) {
+            ForkdexErrorLog.add(this, "Request uninstall " + pkg, error);
+            Toast.makeText(this, "Android menolak permintaan uninstall. Periksa izin REQUEST_DELETE_PACKAGES.",
+                    Toast.LENGTH_LONG).show();
         } catch (Exception error) {
-            Toast.makeText(this, "Uninstall tidak didukung untuk aplikasi ini.", Toast.LENGTH_SHORT).show();
+            ForkdexErrorLog.add(this, "Request uninstall " + pkg, error);
+            Toast.makeText(this, "Gagal membuka konfirmasi uninstall: " + error.getMessage(),
+                    Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_UNINSTALL_APP) {
+            // Refresh launcher entries after returning from the system package installer.
+            getWindow().getDecorView().postDelayed(() -> {
+                loadInstalledApps();
+                populateDrawerApps(apps, clonedApps);
+                populatePinnedApps();
+            }, 700L);
         }
     }
 
