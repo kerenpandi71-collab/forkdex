@@ -54,6 +54,9 @@ public final class MainActivity extends Activity {
     private EditText drawerSearch;
     private boolean taskRefreshInFlight;
     private boolean activityResumed;
+    private long lastTaskRefreshAt;
+    private String lastTaskbarSignature;
+    private String lastTaskbarStatus;
     private DisplayManager displayManager;
     private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
         @Override public void onDisplayAdded(int displayId) { }
@@ -150,6 +153,8 @@ public final class MainActivity extends Activity {
     private FrameLayout desktopRoot;
     private LinearLayout appDrawer;
     private LinearLayout drawerApps;
+    private android.widget.HorizontalScrollView pinnedScroll;
+    private TextView sortButton;
     private boolean drawerVisible = false;
 
     private void render() {
@@ -195,7 +200,7 @@ public final class MainActivity extends Activity {
         appDrawer = new LinearLayout(this);
         appDrawer.setOrientation(LinearLayout.VERTICAL);
         appDrawer.setPadding(dp(18), dp(14), dp(18), dp(12));
-        appDrawer.setBackground(glassPanel(0xA81A2638, 24));
+        appDrawer.setBackground(glassPanel(0xD51B293D, 24));
         appDrawer.setElevation(dp(32));
 
         LinearLayout header = new LinearLayout(this);
@@ -227,7 +232,7 @@ public final class MainActivity extends Activity {
         search.setHintTextColor(0xFF9EABC0);
         search.setTextColor(0xFFF4F7FC);
         search.setPadding(dp(15), 0, dp(15), 0);
-        search.setBackground(glassControl(0x7838465B, 13));
+        search.setBackground(glassControl(0xA6334156, 15));
         search.setCompoundDrawablePadding(dp(8));
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         search.setInputType(android.text.InputType.TYPE_CLASS_TEXT
@@ -256,18 +261,17 @@ public final class MainActivity extends Activity {
         TextView editPins = text("Kelola", 12, true);
         editPins.setTextColor(0xFF9FC5FF);
         editPins.setGravity(Gravity.CENTER);
-        editPins.setOnClickListener(v -> Toast.makeText(this,
-                "Tekan lama aplikasi lalu pilih Sematkan atau Lepas sematan.", Toast.LENGTH_LONG).show());
+        editPins.setOnClickListener(v -> showPinnedAppsManager());
         pinHeader.addView(editPins, new LinearLayout.LayoutParams(-2, dp(30)));
         appDrawer.addView(pinHeader);
 
-        android.widget.HorizontalScrollView pinScroll = new android.widget.HorizontalScrollView(this);
-        pinScroll.setHorizontalScrollBarEnabled(false);
-        pinScroll.setFillViewport(false);
+        pinnedScroll = new android.widget.HorizontalScrollView(this);
+        pinnedScroll.setHorizontalScrollBarEnabled(false);
+        pinnedScroll.setFillViewport(true);
         pinnedApps = new LinearLayout(this);
         pinnedApps.setGravity(Gravity.CENTER_VERTICAL);
-        pinScroll.addView(pinnedApps, new android.widget.HorizontalScrollView.LayoutParams(-2, -1));
-        appDrawer.addView(pinScroll, new LinearLayout.LayoutParams(-1, dp(82)));
+        pinnedScroll.addView(pinnedApps, new android.widget.HorizontalScrollView.LayoutParams(-2, -1));
+        appDrawer.addView(pinnedScroll, new LinearLayout.LayoutParams(-1, dp(38)));
         populatePinnedApps();
 
         LinearLayout section = new LinearLayout(this);
@@ -275,14 +279,16 @@ public final class MainActivity extends Activity {
         TextView allApps = text("All apps", 16, true);
         allApps.setTextColor(0xFFF1F4FA);
         section.addView(allApps, new LinearLayout.LayoutParams(0, dp(34), 1f));
-        TextView sort = text("A–Z  ▾", 12, true);
-        sort.setTextColor(0xFFE6EDF8);
-        sort.setGravity(Gravity.CENTER);
-        sort.setPadding(dp(12), 0, dp(12), 0);
-        sort.setBackground(glassControl(0x703E4B61, 10));
-        sort.setContentDescription("Urutkan daftar aplikasi");
-        sort.setOnClickListener(v -> showSortOptions());
-        section.addView(sort, new LinearLayout.LayoutParams(-2, dp(32)));
+        boolean descendingSort = getSharedPreferences("launcher_preferences", MODE_PRIVATE)
+                .getBoolean("sort_descending", false);
+        sortButton = text(descendingSort ? "Z–A  ▾" : "A–Z  ▾", 12, true);
+        sortButton.setTextColor(0xFFE6EDF8);
+        sortButton.setGravity(Gravity.CENTER);
+        sortButton.setPadding(dp(12), 0, dp(12), 0);
+        sortButton.setBackground(glassControl(0x703E4B61, 10));
+        sortButton.setContentDescription("Urutkan daftar aplikasi");
+        sortButton.setOnClickListener(v -> showSortOptions());
+        section.addView(sortButton, new LinearLayout.LayoutParams(-2, dp(32)));
         appDrawer.addView(section);
 
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
@@ -316,10 +322,11 @@ public final class MainActivity extends Activity {
         int screenW = getResources().getDisplayMetrics().widthPixels;
         int screenH = getResources().getDisplayMetrics().heightPixels;
         int panelW = Math.min(dp(600), (int)(screenW * 0.94f));
-        int panelH = Math.min(dp(690), (int)(screenH * 0.82f));
+        int bottomSafe = Math.min(dp(84), screenH / 6);
+        int panelH = Math.min(dp(680), Math.max(dp(300), screenH - bottomSafe - dp(16)));
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                panelW, panelH, Gravity.TOP | Gravity.LEFT);
-        params.setMargins(dp(10), dp(10), 0, 0);
+                panelW, panelH, Gravity.BOTTOM | Gravity.START);
+        params.setMargins(dp(12), 0, 0, bottomSafe);
         desktopRoot.addView(appDrawer, params);
 
         search.addTextChangedListener(new android.text.TextWatcher() {
@@ -382,7 +389,7 @@ public final class MainActivity extends Activity {
             label.setGravity(Gravity.CENTER);
             label.setMaxLines(1);
             item.addView(label, new LinearLayout.LayoutParams(dp(66), dp(20)));
-            item.setBackground(glassControl(0x122F3B50, 12));
+            item.setBackground(tileSurface(0x0EFFFFFF, 12));
             item.setContentDescription(label.getText());
             addPressMotion(item);
             item.setOnClickListener(v -> { setDrawerVisible(false); launchSelectedApp(app); });
@@ -412,7 +419,7 @@ public final class MainActivity extends Activity {
             label.setMaxLines(1);
             item.addView(label, new LinearLayout.LayoutParams(dp(66), dp(20)));
             item.setContentDescription(labelText + ", profil lain");
-            item.setBackground(glassControl(0x183E6BA5, 12));
+            item.setBackground(tileSurface(0x163E6BA5, 12));
             addPressMotion(item);
             item.setOnClickListener(v -> { setDrawerVisible(false); launchClonedApp(clone); });
             item.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
@@ -422,11 +429,60 @@ public final class MainActivity extends Activity {
             count++;
         }
         if (count == 0) {
-            TextView empty = text("Sematkan aplikasi favorit dengan menekan lama ikonnya.", 11, false);
+            TextView empty = text("Sematkan favorit dari menu tekan-lama.", 11, false);
             empty.setTextColor(0xFF9EABC0);
             empty.setGravity(Gravity.CENTER_VERTICAL);
+            empty.setSingleLine(true);
+            empty.setEllipsize(android.text.TextUtils.TruncateAt.END);
             pinnedApps.addView(empty, new LinearLayout.LayoutParams(-1, -1));
         }
+        if (pinnedScroll != null && pinnedScroll.getLayoutParams() != null) {
+            android.view.ViewGroup.LayoutParams rowParams = pinnedScroll.getLayoutParams();
+            int rowHeight = dp(count == 0 ? 34 : 70);
+            if (rowParams.height != rowHeight) {
+                rowParams.height = rowHeight;
+                pinnedScroll.setLayoutParams(rowParams);
+            }
+        }
+    }
+
+    private void showPinnedAppsManager() {
+        android.content.SharedPreferences prefs = getSharedPreferences(
+                "launcher_preferences", MODE_PRIVATE);
+        java.util.Set<String> appPins = new java.util.HashSet<>(prefs.getStringSet(
+                "pinned_apps", Collections.emptySet()));
+        java.util.Set<String> clonePins = new java.util.HashSet<>(prefs.getStringSet(
+                "pinned_clones", Collections.emptySet()));
+        List<String> names = new ArrayList<>();
+        List<Runnable> removeActions = new ArrayList<>();
+        for (ResolveInfo app : apps) {
+            String pkg = app.activityInfo.packageName;
+            if (!appPins.contains(pkg)) continue;
+            names.add(app.loadLabel(getPackageManager()).toString());
+            removeActions.add(() -> appPins.remove(pkg));
+        }
+        for (LauncherActivityInfo clone : clonedApps) {
+            String key = clonePinKey(clone);
+            if (!clonePins.contains(key)) continue;
+            String label = clone.getLabel() == null
+                    ? clone.getComponentName().getPackageName() : clone.getLabel().toString();
+            names.add(label + " · Profil lain");
+            removeActions.add(() -> clonePins.remove(key));
+        }
+        if (names.isEmpty()) {
+            new AlertDialog.Builder(this).setTitle("Aplikasi yang disematkan")
+                    .setMessage("Belum ada aplikasi di Pinned. Tekan lama ikon aplikasi lalu pilih Sematkan.")
+                    .setPositiveButton("Mengerti", null).show();
+            return;
+        }
+        new AlertDialog.Builder(this).setTitle("Kelola Pinned · pilih untuk melepas")
+                .setItems(names.toArray(new String[0]), (dialog, which) -> {
+                    removeActions.get(which).run();
+                    prefs.edit().putStringSet("pinned_apps", appPins)
+                            .putStringSet("pinned_clones", clonePins).apply();
+                    populatePinnedApps();
+                    Toast.makeText(this, "Sematan dilepas.", Toast.LENGTH_SHORT).show();
+                }).setNegativeButton("Tutup", null).show();
     }
 
     private void showLauncherOptions() {
@@ -447,9 +503,13 @@ public final class MainActivity extends Activity {
 
     private void showSortOptions() {
         String[] options = {"Nama (A–Z)", "Nama (Z–A)"};
-        new AlertDialog.Builder(this).setTitle("Urutkan aplikasi").setItems(options, (d, which) -> {
+        int selected = getSharedPreferences("launcher_preferences", MODE_PRIVATE)
+                .getBoolean("sort_descending", false) ? 1 : 0;
+        new AlertDialog.Builder(this).setTitle("Urutkan aplikasi")
+                .setSingleChoiceItems(options, selected, (d, which) -> {
             getSharedPreferences("launcher_preferences", MODE_PRIVATE).edit()
                     .putBoolean("sort_descending", which == 1).apply();
+            if (sortButton != null) sortButton.setText(which == 1 ? "Z–A  ▾" : "A–Z  ▾");
             Collections.sort(apps, (a, b) -> {
                 int result = a.loadLabel(getPackageManager()).toString().compareToIgnoreCase(
                         b.loadLabel(getPackageManager()).toString());
@@ -463,7 +523,8 @@ public final class MainActivity extends Activity {
             });
             populateDrawerApps(apps, clonedApps);
             populatePinnedApps();
-        }).show();
+            d.dismiss();
+        }).setNegativeButton("Tutup", null).show();
     }
 
     private void showHiddenApps() {
@@ -600,15 +661,16 @@ public final class MainActivity extends Activity {
             ImageView icon = new ImageView(this);
             icon.setImageDrawable(app.loadIcon(getPackageManager()));
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            tile.addView(icon, new LinearLayout.LayoutParams(dp(46), dp(46)));
-            TextView label = text(labelText, 11, false);
+            tile.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            TextView label = text(labelText, 12, false);
             label.setTextColor(0xFFE8EDF6);
             label.setGravity(Gravity.CENTER);
             label.setMaxLines(2);
             label.setIncludeFontPadding(false);
             tile.addView(label, new LinearLayout.LayoutParams(-1, dp(32)));
             tile.setContentDescription(labelText);
-            tile.setBackground(glassControl(0x102F3B50, 11));
+            tile.setBackground(tileSurface(0x0CFFFFFF, 14));
+            tile.setTooltipText(labelText);
             addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchSelectedApp(app); });
             tile.setOnLongClickListener(v -> { showAppActions(app); return true; });
@@ -624,36 +686,40 @@ public final class MainActivity extends Activity {
             ImageView icon = new ImageView(this);
             icon.setImageDrawable(clone.getIcon(0));
             icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-            tile.addView(icon, new LinearLayout.LayoutParams(dp(46), dp(46)));
-            TextView label = text(name, 11, false);
+            tile.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            TextView label = text(name, 12, false);
             label.setTextColor(0xFFBBD7FF);
             label.setGravity(Gravity.CENTER);
             label.setMaxLines(2);
             label.setIncludeFontPadding(false);
             tile.addView(label, new LinearLayout.LayoutParams(-1, dp(32)));
             tile.setContentDescription(name + ", profil lain");
-            tile.setBackground(glassControl(0x143E6BA5, 11));
+            tile.setBackground(tileSurface(0x103E6BA5, 14));
+            tile.setTooltipText(name + " · Profil lain");
             addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchClonedApp(clone); });
             tile.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
             tiles.add(tile);
         }
-        int widthDp = Math.round(getResources().getDisplayMetrics().widthPixels /
-                getResources().getDisplayMetrics().density);
-        int columns = widthDp < 380 ? 4 : 5;
+        float density = getResources().getDisplayMetrics().density;
+        int panelWidthPx = appDrawer != null && appDrawer.getLayoutParams() != null
+                ? appDrawer.getLayoutParams().width : getResources().getDisplayMetrics().widthPixels;
+        int contentWidthDp = Math.round(panelWidthPx / density) - 36;
+        int minColumns = contentWidthDp < 260 ? 3 : 4;
+        int columns = Math.max(minColumns, Math.min(6, contentWidthDp / 94));
         for (int i = 0; i < tiles.size(); i += columns) {
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             for (int j = i; j < Math.min(i + columns, tiles.size()); j++) {
-                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(88), 1f);
-                cell.setMargins(dp(2), dp(2), dp(2), dp(2));
+                LinearLayout.LayoutParams cell = new LinearLayout.LayoutParams(0, dp(94), 1f);
+                cell.setMargins(dp(3), dp(2), dp(3), dp(2));
                 row.addView(tiles.get(j), cell);
             }
             for (int j = Math.min(i + columns, tiles.size()); j < i + columns; j++) {
                 View empty = new View(this);
-                row.addView(empty, new LinearLayout.LayoutParams(0, dp(88), 1f));
+                row.addView(empty, new LinearLayout.LayoutParams(0, dp(94), 1f));
             }
-            drawerApps.addView(row, new LinearLayout.LayoutParams(-1, dp(92)));
+            drawerApps.addView(row, new LinearLayout.LayoutParams(-1, dp(98)));
         }
         if (tiles.isEmpty()) {
             TextView empty = text("Tidak ada aplikasi yang cocok. Coba kata kunci lain.", 13, false);
@@ -880,6 +946,12 @@ public final class MainActivity extends Activity {
                 rounded(Color.WHITE, radiusDp));
     }
 
+    private android.graphics.drawable.Drawable tileSurface(int color, float radiusDp) {
+        return new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x34FFFFFF),
+                rounded(color, radiusDp), rounded(Color.WHITE, radiusDp));
+    }
+
     private void renderTaskbar(FrameLayout root) {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
@@ -898,9 +970,12 @@ public final class MainActivity extends Activity {
                 appDrawer == null || appDrawer.getVisibility() != View.VISIBLE));
         bar.addView(start, new LinearLayout.LayoutParams(dp(44), dp(40)));
 
-        TextView search = text("⌕   Search", 13, false);
+        int screenWidthDp = Math.round(getResources().getDisplayMetrics().widthPixels
+                / getResources().getDisplayMetrics().density);
+        boolean compactDock = screenWidthDp < 400;
+        TextView search = text(compactDock ? "⌕" : "⌕  Cari", 13, false);
         search.setTextColor(0xFFE0E7F1);
-        search.setGravity(Gravity.CENTER_VERTICAL);
+        search.setGravity(compactDock ? Gravity.CENTER : Gravity.CENTER_VERTICAL);
         search.setPadding(dp(13), 0, dp(16), 0);
         search.setContentDescription("Cari aplikasi");
         search.setBackground(glassControl(0x4A344257, 18));
@@ -909,13 +984,16 @@ public final class MainActivity extends Activity {
             setDrawerVisible(true);
             if (drawerSearch != null) drawerSearch.post(this::focusDrawerSearch);
         });
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(dp(132), dp(36));
+        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
+                dp(compactDock ? 44 : 120), dp(36));
         searchParams.setMargins(dp(10), 0, dp(16), 0);
         bar.addView(search, searchParams);
 
         android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
         scroll.setHorizontalScrollBarEnabled(false);
         scroll.setFillViewport(false);
+        scroll.setContentDescription("Aplikasi terbuka atau baru digunakan; pin favorit dikelola di Start");
+        scroll.setTooltipText("Aplikasi terbuka / recent apps");
         taskButtons = new LinearLayout(this);
         taskButtons.setOrientation(LinearLayout.HORIZONTAL);
         taskButtons.setGravity(Gravity.CENTER_VERTICAL);
@@ -959,23 +1037,35 @@ public final class MainActivity extends Activity {
                 -1, dp(66), Gravity.BOTTOM);
         params.setMargins(dp(14), 0, dp(14), dp(10));
         root.addView(bar, params);
+        lastTaskbarSignature = null;
+        lastTaskbarStatus = null;
+        lastTaskRefreshAt = 0L;
         refreshTaskbarTasks();
     }
 
     private void refreshTaskbarTasks() {
         if (taskButtons == null || !activityResumed) return;
         if (!windowClient.isConnected()) {
-            taskButtons.removeAllViews();
-            TextView status = text(windowClient.isBinding()
-                    ? "Menghubungkan Shizuku…" : "Hubungkan Shizuku untuk jendela", 11, false);
-            status.setTextColor(0xFFCED9EA);
-            status.setGravity(Gravity.CENTER_VERTICAL);
-            status.setContentDescription(windowClient.connectionStatus());
-            status.setOnClickListener(v -> showShizukuDialog());
-            taskButtons.addView(status, new LinearLayout.LayoutParams(-2, dp(40)));
+            String statusText = windowClient.isBinding()
+                    ? "Menghubungkan Shizuku…" : "Hubungkan Shizuku untuk jendela";
+            if (!statusText.equals(lastTaskbarStatus)) {
+                taskButtons.removeAllViews();
+                TextView status = text(statusText, 11, false);
+                status.setTextColor(0xFFCED9EA);
+                status.setGravity(Gravity.CENTER_VERTICAL);
+                status.setContentDescription(windowClient.connectionStatus());
+                status.setOnClickListener(v -> showShizukuDialog());
+                taskButtons.addView(status, new LinearLayout.LayoutParams(-2, dp(40)));
+                lastTaskbarStatus = statusText;
+            }
+            lastTaskbarSignature = null;
+            lastTaskRefreshAt = 0L;
             return;
         }
-        if (taskRefreshInFlight) return;
+        lastTaskbarStatus = null;
+        long now = android.os.SystemClock.elapsedRealtime();
+        if (taskRefreshInFlight || now - lastTaskRefreshAt < 5000L) return;
+        lastTaskRefreshAt = now;
         taskRefreshInFlight = true;
         final int displayId = currentDisplayId();
         new Thread(() -> {
@@ -983,12 +1073,23 @@ public final class MainActivity extends Activity {
                 String raw = windowClient.listTasks(displayId);
                 JSONArray tasks = new JSONArray(raw);
                 saveActiveWindowBounds(tasks);
+                StringBuilder signatureBuilder = new StringBuilder();
+                for (int i = 0; i < tasks.length(); i++) {
+                    JSONObject task = tasks.optJSONObject(i);
+                    if (task == null) continue;
+                    signatureBuilder.append(task.optInt("taskId", -1)).append(':')
+                            .append(task.optString("packageName", "App")).append(':')
+                            .append(task.optBoolean("focused", false)).append('|');
+                }
+                String signature = signatureBuilder.toString();
                 runOnUiThread(() -> {
                     taskRefreshInFlight = false;
-                    if (taskButtons == null) return;
+                    if (!activityResumed || taskButtons == null || !windowClient.isConnected()
+                            || signature.equals(lastTaskbarSignature)) return;
+                    lastTaskbarSignature = signature;
                     taskButtons.removeAllViews();
                     if (tasks.length() == 0) {
-                        TextView empty = text("Tidak ada jendela aktif", 11, false);
+                        TextView empty = text("Tidak ada jendela terbuka", 11, false);
                         empty.setTextColor(0xFFB8C3D3);
                         empty.setGravity(Gravity.CENTER_VERTICAL);
                         taskButtons.addView(empty, new LinearLayout.LayoutParams(-2, dp(40)));
@@ -1003,7 +1104,10 @@ public final class MainActivity extends Activity {
                         item.setBackground(glassControl(
                                 focused ? 0x874B668D : 0x15212D40, 13));
                         addPressMotion(item);
-                        item.setContentDescription(applicationLabel(pkg));
+                        String appLabel = applicationLabel(pkg);
+                        item.setContentDescription((focused ? "Aplikasi aktif: " : "Aplikasi terbuka: ")
+                                + appLabel + ". Ketuk untuk fokus; tekan lama untuk opsi jendela.");
+                        item.setTooltipText(appLabel + (focused ? " · aktif" : " · jendela"));
                         ImageView icon = new ImageView(this);
                         icon.setImageDrawable(applicationIcon(pkg));
                         icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
@@ -1024,7 +1128,10 @@ public final class MainActivity extends Activity {
                                 runOnUiThread(() -> Toast.makeText(this,
                                         error.getMessage(), Toast.LENGTH_SHORT).show());
                             }
-                            refreshTaskbarTasks();
+                            runOnUiThread(() -> {
+                                lastTaskRefreshAt = 0L;
+                                refreshTaskbarTasks();
+                            });
                         }, "Forkdex-Taskbar-Focus").start());
                         item.setOnLongClickListener(v -> {
                             showWindowActions(task, displayId);
