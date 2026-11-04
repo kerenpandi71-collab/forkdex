@@ -1,0 +1,32 @@
+.gradle/
+build/
+*/build/
+local.properties
+
+# IDEs and local Android tooling
+.idea/
+.vscode/
+.fleet/
+.vs/
+.kotlin/
+out/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+.factorypath
+nbproject/private/
+.externalNativeBuild/
+.cxx/
+captures/
+__pycache__/
+*.pyc
+
+*.jks
+*.keystore
+signing.properties
+
+# Local design notes
+/tmp-notes.md

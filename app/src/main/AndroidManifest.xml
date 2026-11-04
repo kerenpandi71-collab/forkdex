@@ -1,0 +1,28 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+ <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+ <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+ <application android:allowBackup="true" android:label="Forkdex" android:theme="@android:style/Theme.Material.NoActionBar">
+  <provider
+   android:name="rikka.shizuku.ShizukuProvider"
+   android:authorities="${applicationId}.shizuku"
+   android:enabled="true"
+   android:exported="true"
+   android:multiprocess="false"
+   android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:resizeableActivity="true" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize">
+   <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/><category android:name="android.intent.category.HOME"/><category android:name="android.intent.category.DEFAULT"/></intent-filter>
+  </activity>
+  <activity-alias
+   android:name=".SecondaryHomeActivity"
+   android:targetActivity=".MainActivity"
+   android:enabled="true"
+   android:exported="true"
+   android:excludeFromRecents="true">
+   <intent-filter android:priority="1000">
+    <action android:name="android.intent.action.MAIN"/>
+    <category android:name="android.intent.category.SECONDARY_HOME"/>
+    <category android:name="android.intent.category.DEFAULT"/>
+   </intent-filter>
+  </activity-alias>
+ </application>
+</manifest>
