@@ -31,7 +31,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -51,12 +50,16 @@ public final class MainActivity extends Activity {
     private final android.os.Handler taskbarHandler = new android.os.Handler(android.os.Looper.getMainLooper());
     private LinearLayout taskButtons;
     private TextView taskbarClock;
+    private TextView taskbarDate;
+    private EditText drawerSearch;
+    private boolean taskRefreshInFlight;
+    private boolean activityResumed;
     private DisplayManager displayManager;
     private final DisplayManager.DisplayListener displayListener = new DisplayManager.DisplayListener() {
         @Override public void onDisplayAdded(int displayId) { }
         @Override public void onDisplayChanged(int displayId) { }
         @Override public void onDisplayRemoved(int displayId) {
-            if (getDisplay() != null && getDisplay().getDisplayId() == displayId) {
+            if (currentDisplayId() == displayId) {
                 Toast.makeText(MainActivity.this, "Layar eksternal terputus.", Toast.LENGTH_LONG).show();
                 finish();
             }
@@ -64,7 +67,10 @@ public final class MainActivity extends Activity {
     };
     private final Runnable taskbarTicker = new Runnable() {
         @Override public void run() {
-            if (taskbarClock != null) taskbarClock.setText(new java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(new java.util.Date()));
+            java.util.Date now = new java.util.Date();
+            java.util.Locale locale = java.util.Locale.getDefault();
+            if (taskbarClock != null) taskbarClock.setText(new java.text.SimpleDateFormat("HH:mm", locale).format(now));
+            if (taskbarDate != null) taskbarDate.setText(new java.text.SimpleDateFormat("EEE, d MMM", locale).format(now));
             refreshTaskbarTasks();
             taskbarHandler.postDelayed(this, 3000L);
         }
@@ -93,6 +99,7 @@ public final class MainActivity extends Activity {
             } else if (!windowClient.isBinding()) {
                 Toast.makeText(this, windowClient.connectionStatus(), Toast.LENGTH_LONG).show();
             }
+            refreshTaskbarTasks();
         }));
         getWindow().setStatusBarColor(Color.rgb(22, 29, 42));
         getWindow().setNavigationBarColor(Color.rgb(22, 29, 42));
@@ -105,8 +112,13 @@ public final class MainActivity extends Activity {
         apps.clear();
         apps.addAll(getPackageManager().queryIntentActivities(query, 0));
         loadClonedApps();
-        Collections.sort(apps, Comparator.comparing(
-            a -> a.loadLabel(getPackageManager()).toString().toLowerCase()));
+        boolean descending = getSharedPreferences("launcher_preferences", MODE_PRIVATE)
+                .getBoolean("sort_descending", false);
+        Collections.sort(apps, (left, right) -> {
+            int order = left.loadLabel(getPackageManager()).toString().compareToIgnoreCase(
+                    right.loadLabel(getPackageManager()).toString());
+            return descending ? -order : order;
+        });
         visibleApps.clear();
         visibleApps.addAll(apps);
     }
@@ -123,8 +135,13 @@ public final class MainActivity extends Activity {
                     if (info != null && info.getComponentName() != null) clonedApps.add(info);
                 }
             }
-            Collections.sort(clonedApps, Comparator.comparing(
-                    item -> item.getLabel().toString().toLowerCase()));
+            Collections.sort(clonedApps, (left, right) -> {
+                String a = left.getLabel() == null ? "" : left.getLabel().toString();
+                String b = right.getLabel() == null ? "" : right.getLabel().toString();
+                int order = a.compareToIgnoreCase(b);
+                return getSharedPreferences("launcher_preferences", MODE_PRIVATE)
+                        .getBoolean("sort_descending", false) ? -order : order;
+            });
         } catch (Throwable error) {
             ForkdexErrorLog.add(this, "Load cloned apps/profiles", error);
         }
@@ -159,7 +176,7 @@ public final class MainActivity extends Activity {
         if (currentDisplayId() != Display.DEFAULT_DISPLAY) {
             TextView displayLabel = text("DESKTOP  •  " + displayName(currentDisplayId()), 12, true);
             displayLabel.setTextColor(Color.WHITE);
-            displayLabel.setBackground(rounded(0x660D111B, 10));
+            displayLabel.setBackground(glassControl(0x8A1B2638, 16));
             displayLabel.setPadding(dp(12), dp(7), dp(12), dp(7));
             FrameLayout.LayoutParams labelParams = new FrameLayout.LayoutParams(-2, -2,
                     Gravity.TOP | Gravity.RIGHT);
@@ -178,7 +195,7 @@ public final class MainActivity extends Activity {
         appDrawer = new LinearLayout(this);
         appDrawer.setOrientation(LinearLayout.VERTICAL);
         appDrawer.setPadding(dp(18), dp(14), dp(18), dp(12));
-        appDrawer.setBackground(glassPanel(0xB81B2638, 22));
+        appDrawer.setBackground(glassPanel(0xA81A2638, 24));
         appDrawer.setElevation(dp(32));
 
         LinearLayout header = new LinearLayout(this);
@@ -203,17 +220,33 @@ public final class MainActivity extends Activity {
         appDrawer.addView(header);
 
         EditText search = new EditText(this);
+        drawerSearch = search;
         search.setSingleLine(true);
         search.setTextSize(14);
-        search.setHint("Cari aplikasi dan pengaturan");
+        search.setHint("Cari aplikasi");
         search.setHintTextColor(0xFF9EABC0);
         search.setTextColor(0xFFF4F7FC);
         search.setPadding(dp(15), 0, dp(15), 0);
         search.setBackground(glassControl(0x7838465B, 13));
         search.setCompoundDrawablePadding(dp(8));
+        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        search.setInputType(android.text.InputType.TYPE_CLASS_TEXT
+                | android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS);
+        LinearLayout searchRow = new LinearLayout(this);
+        searchRow.setGravity(Gravity.CENTER_VERTICAL);
+        TextView clearSearch = text("×", 22, false);
+        clearSearch.setGravity(Gravity.CENTER);
+        clearSearch.setContentDescription("Hapus pencarian");
+        clearSearch.setVisibility(View.GONE);
+        clearSearch.setOnClickListener(v -> {
+            search.setText("");
+            search.requestFocus();
+        });
+        searchRow.addView(search, new LinearLayout.LayoutParams(0, dp(48), 1f));
+        searchRow.addView(clearSearch, new LinearLayout.LayoutParams(dp(42), dp(48)));
         LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(-1, dp(48));
         searchParams.setMargins(0, dp(12), 0, dp(12));
-        appDrawer.addView(search, searchParams);
+        appDrawer.addView(searchRow, searchParams);
 
         LinearLayout pinHeader = new LinearLayout(this);
         pinHeader.setGravity(Gravity.CENTER_VERTICAL);
@@ -247,6 +280,7 @@ public final class MainActivity extends Activity {
         sort.setGravity(Gravity.CENTER);
         sort.setPadding(dp(12), 0, dp(12), 0);
         sort.setBackground(glassControl(0x703E4B61, 10));
+        sort.setContentDescription("Urutkan daftar aplikasi");
         sort.setOnClickListener(v -> showSortOptions());
         section.addView(sort, new LinearLayout.LayoutParams(-2, dp(32)));
         appDrawer.addView(section);
@@ -291,19 +325,33 @@ public final class MainActivity extends Activity {
         search.addTextChangedListener(new android.text.TextWatcher() {
             public void beforeTextChanged(CharSequence value, int start, int count, int after) { }
             public void onTextChanged(CharSequence value, int start, int before, int count) {
-                String q = value.toString().trim().toLowerCase();
+                java.util.Locale locale = java.util.Locale.getDefault();
+                String q = value.toString().trim().toLowerCase(locale);
+                clearSearch.setVisibility(q.isEmpty() ? View.GONE : View.VISIBLE);
                 List<ResolveInfo> filtered = new ArrayList<>();
                 for (ResolveInfo app : apps)
-                    if (app.loadLabel(getPackageManager()).toString().toLowerCase().contains(q)
+                    if (app.loadLabel(getPackageManager()).toString().toLowerCase(locale).contains(q)
                             && !isHiddenApp(app.activityInfo.packageName)) filtered.add(app);
                 List<LauncherActivityInfo> filteredClones = new ArrayList<>();
                 for (LauncherActivityInfo clone : clonedApps) {
                     String label = clone.getLabel() == null ? "" : clone.getLabel().toString();
-                    if (label.toLowerCase().contains(q)) filteredClones.add(clone);
+                    String clonePackage = clone.getComponentName().getPackageName();
+                    if (label.toLowerCase(locale).contains(q) && !isHiddenApp(clonePackage)) {
+                        filteredClones.add(clone);
+                    }
                 }
                 populateDrawerApps(filtered, filteredClones);
             }
             public void afterTextChanged(android.text.Editable value) { }
+        });
+        search.setOnEditorActionListener((view, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                ((android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE))
+                        .hideSoftInputFromWindow(search.getWindowToken(), 0);
+                search.clearFocus();
+                return true;
+            }
+            return false;
         });
         populateDrawerApps(apps, clonedApps);
     }
@@ -334,8 +382,40 @@ public final class MainActivity extends Activity {
             label.setGravity(Gravity.CENTER);
             label.setMaxLines(1);
             item.addView(label, new LinearLayout.LayoutParams(dp(66), dp(20)));
+            item.setBackground(glassControl(0x122F3B50, 12));
+            item.setContentDescription(label.getText());
+            addPressMotion(item);
             item.setOnClickListener(v -> { setDrawerVisible(false); launchSelectedApp(app); });
             item.setOnLongClickListener(v -> { showAppActions(app); return true; });
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(70), -1);
+            lp.setMargins(0, 0, dp(5), 0);
+            pinnedApps.addView(item, lp);
+            count++;
+        }
+        java.util.Set<String> clonePins = getSharedPreferences(
+                "launcher_preferences", MODE_PRIVATE).getStringSet(
+                "pinned_clones", Collections.emptySet());
+        for (LauncherActivityInfo clone : clonedApps) {
+            String pkg = clone.getComponentName().getPackageName();
+            if (!clonePins.contains(clonePinKey(clone)) || isHiddenApp(pkg)) continue;
+            LinearLayout item = new LinearLayout(this);
+            item.setOrientation(LinearLayout.VERTICAL);
+            item.setGravity(Gravity.CENTER);
+            ImageView icon = new ImageView(this);
+            icon.setImageDrawable(clone.getIcon(0));
+            icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+            item.addView(icon, new LinearLayout.LayoutParams(dp(36), dp(36)));
+            String labelText = clone.getLabel() == null ? pkg : clone.getLabel().toString();
+            TextView label = text(labelText, 10, false);
+            label.setTextColor(0xFFBBD7FF);
+            label.setGravity(Gravity.CENTER);
+            label.setMaxLines(1);
+            item.addView(label, new LinearLayout.LayoutParams(dp(66), dp(20)));
+            item.setContentDescription(labelText + ", profil lain");
+            item.setBackground(glassControl(0x183E6BA5, 12));
+            addPressMotion(item);
+            item.setOnClickListener(v -> { setDrawerVisible(false); launchClonedApp(clone); });
+            item.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
             LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(dp(70), -1);
             lp.setMargins(0, 0, dp(5), 0);
             pinnedApps.addView(item, lp);
@@ -361,7 +441,7 @@ public final class MainActivity extends Activity {
             } else if (which == 1) showHiddenApps();
             else if (which == 2) openSystemSettings();
             else if (which == 3) openWallpaperSettings();
-            else showTaskbarPanel();
+            else showForkdexSettings();
         }).show();
     }
 
@@ -375,7 +455,14 @@ public final class MainActivity extends Activity {
                         b.loadLabel(getPackageManager()).toString());
                 return which == 1 ? -result : result;
             });
+            Collections.sort(clonedApps, (a, b) -> {
+                String left = a.getLabel() == null ? "" : a.getLabel().toString();
+                String right = b.getLabel() == null ? "" : b.getLabel().toString();
+                int result = left.compareToIgnoreCase(right);
+                return which == 1 ? -result : result;
+            });
             populateDrawerApps(apps, clonedApps);
+            populatePinnedApps();
         }).show();
     }
 
@@ -457,7 +544,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showPowerOptions() {
-        String[] actions = {"Pengaturan Android", "Kunci layar (jika didukung)", "Tutup Forkdex"};
+        String[] actions = {"Pengaturan Android", "Setelan keamanan", "Tutup Forkdex"};
         new AlertDialog.Builder(this).setTitle("Power & system").setItems(actions, (d, which) -> {
             if (which == 0) openSystemSettings();
             else if (which == 1) {
@@ -469,13 +556,29 @@ public final class MainActivity extends Activity {
         }).show();
     }
 
+    private void showForkdexSettings() {
+        String[] options = {"Mode jendela dan Freeform", "Per-App DPI",
+                "Shizuku dan layanan", "Aplikasi tersembunyi", "Quick settings"};
+        new AlertDialog.Builder(this).setTitle("Pengaturan Forkdex")
+                .setItems(options, (dialog, which) -> {
+                    switch (which) {
+                        case 0 -> toggleWindowMode();
+                        case 1 -> showProfiles();
+                        case 2 -> showShizukuDialog();
+                        case 3 -> showHiddenApps();
+                        case 4 -> showTaskbarPanel();
+                    }
+                }).setNegativeButton("Tutup", null).show();
+    }
+
     private void addDrawerTool(LinearLayout row, String glyph, String label,
                                View.OnClickListener listener) {
         TextView button = text(glyph, 18, true);
         button.setGravity(Gravity.CENTER);
         button.setTextColor(Color.WHITE);
         button.setContentDescription(label);
-        button.setBackground(rounded(0x552E3545, 10));
+        button.setBackground(glassControl(0x65303B50, 12));
+        addPressMotion(button);
         button.setOnClickListener(listener);
         LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(0, dp(38), 1f);
         p.setMargins(dp(2), 0, dp(2), 0);
@@ -504,7 +607,9 @@ public final class MainActivity extends Activity {
             label.setMaxLines(2);
             label.setIncludeFontPadding(false);
             tile.addView(label, new LinearLayout.LayoutParams(-1, dp(32)));
-            tile.setBackground(rounded(0x002F3B50, 11));
+            tile.setContentDescription(labelText);
+            tile.setBackground(glassControl(0x102F3B50, 11));
+            addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchSelectedApp(app); });
             tile.setOnLongClickListener(v -> { showAppActions(app); return true; });
             tiles.add(tile);
@@ -526,8 +631,11 @@ public final class MainActivity extends Activity {
             label.setMaxLines(2);
             label.setIncludeFontPadding(false);
             tile.addView(label, new LinearLayout.LayoutParams(-1, dp(32)));
-            tile.setBackground(rounded(0x002F3B50, 11));
+            tile.setContentDescription(name + ", profil lain");
+            tile.setBackground(glassControl(0x143E6BA5, 11));
+            addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchClonedApp(clone); });
+            tile.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
             tiles.add(tile);
         }
         int widthDp = Math.round(getResources().getDisplayMetrics().widthPixels /
@@ -547,6 +655,14 @@ public final class MainActivity extends Activity {
             }
             drawerApps.addView(row, new LinearLayout.LayoutParams(-1, dp(92)));
         }
+        if (tiles.isEmpty()) {
+            TextView empty = text("Tidak ada aplikasi yang cocok. Coba kata kunci lain.", 13, false);
+            empty.setTextColor(0xFFB8C3D3);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(dp(20), dp(16), dp(20), dp(16));
+            empty.setContentDescription("Pencarian tidak menemukan aplikasi");
+            drawerApps.addView(empty, new LinearLayout.LayoutParams(-1, dp(96)));
+        }
     }
 
     private void launchClonedApp(LauncherActivityInfo clone) {
@@ -564,6 +680,46 @@ public final class MainActivity extends Activity {
             Toast.makeText(this, "Gagal membuka aplikasi clone: " + error.getMessage(),
                     Toast.LENGTH_LONG).show();
         }
+    }
+
+    private String clonePinKey(LauncherActivityInfo clone) {
+        return clone.getUser().hashCode() + ":"
+                + clone.getComponentName().flattenToShortString();
+    }
+
+    private void showClonedAppActions(LauncherActivityInfo clone) {
+        String packageName = clone.getComponentName().getPackageName();
+        String label = clone.getLabel() == null ? packageName : clone.getLabel().toString();
+        java.util.Set<String> pins = new java.util.HashSet<>(getSharedPreferences(
+                "launcher_preferences", MODE_PRIVATE).getStringSet(
+                "pinned_clones", Collections.emptySet()));
+        boolean pinned = pins.contains(clonePinKey(clone));
+        String[] actions = {"Buka aplikasi", pinned ? "Lepas dari Dock" : "Sematkan ke Dock",
+                "Info aplikasi", "Sembunyikan aplikasi"};
+        new AlertDialog.Builder(this).setTitle(label + " • Profil lain")
+                .setItems(actions, (dialog, which) -> {
+                    if (which == 0) {
+                        setDrawerVisible(false);
+                        launchClonedApp(clone);
+                    } else if (which == 1) {
+                        if (pinned) pins.remove(clonePinKey(clone));
+                        else pins.add(clonePinKey(clone));
+                        getSharedPreferences("launcher_preferences", MODE_PRIVATE).edit()
+                                .putStringSet("pinned_clones", pins).apply();
+                        populatePinnedApps();
+                    } else if (which == 2) {
+                        openAppInfo(packageName);
+                    } else {
+                        java.util.Set<String> hidden = new java.util.HashSet<>(getSharedPreferences(
+                                "launcher_preferences", MODE_PRIVATE).getStringSet(
+                                "hidden_apps", Collections.emptySet()));
+                        hidden.add(packageName);
+                        getSharedPreferences("launcher_preferences", MODE_PRIVATE).edit()
+                                .putStringSet("hidden_apps", hidden).apply();
+                        populateDrawerApps(apps, clonedApps);
+                        populatePinnedApps();
+                    }
+                }).show();
     }
 
     private void showTaskbarPanel() {
@@ -607,11 +763,84 @@ public final class MainActivity extends Activity {
 
     private void setDrawerVisible(boolean visible) {
         drawerVisible = visible;
-        if (appDrawer != null) appDrawer.setVisibility(visible ? View.VISIBLE : View.GONE);
+        if (appDrawer == null) return;
+        appDrawer.animate().cancel();
+        if (visible) {
+            appDrawer.setVisibility(View.VISIBLE);
+            appDrawer.setPivotX(0f);
+            appDrawer.setPivotY(appDrawer.getHeight());
+            appDrawer.setAlpha(0f);
+            appDrawer.setScaleX(0.97f);
+            appDrawer.setScaleY(0.97f);
+            appDrawer.setTranslationY(dp(10));
+            appDrawer.animate().alpha(1f).scaleX(1f).scaleY(1f).translationY(0f)
+                    .setDuration(220L).setInterpolator(new android.view.animation.DecelerateInterpolator())
+                    .start();
+        } else if (appDrawer.getVisibility() == View.VISIBLE) {
+            appDrawer.animate().alpha(0f).scaleX(0.985f).scaleY(0.985f)
+                    .translationY(dp(7)).setDuration(150L)
+                    .setInterpolator(new android.view.animation.AccelerateInterpolator())
+                    .withEndAction(() -> {
+                        if (!drawerVisible) appDrawer.setVisibility(View.GONE);
+                    }).start();
+        }
+    }
+
+    private void focusDrawerSearch() {
+        if (drawerSearch == null) return;
+        drawerSearch.requestFocus();
+        android.view.inputmethod.InputMethodManager keyboard =
+                (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+        if (keyboard != null) keyboard.showSoftInput(drawerSearch,
+                android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT);
+    }
+
+    @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
+        if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
+                && drawerVisible && appDrawer != null) {
+            int[] location = new int[2];
+            appDrawer.getLocationOnScreen(location);
+            boolean inside = event.getRawX() >= location[0]
+                    && event.getRawX() < location[0] + appDrawer.getWidth()
+                    && event.getRawY() >= location[1]
+                    && event.getRawY() < location[1] + appDrawer.getHeight();
+            if (!inside) setDrawerVisible(false);
+        }
+        return super.dispatchTouchEvent(event);
+    }
+
+    @Override public void onBackPressed() {
+        if (drawerVisible) {
+            if (drawerSearch != null && drawerSearch.hasFocus()) {
+                android.view.inputmethod.InputMethodManager keyboard =
+                        (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (keyboard != null) keyboard.hideSoftInputFromWindow(drawerSearch.getWindowToken(), 0);
+                drawerSearch.clearFocus();
+            }
+            setDrawerVisible(false);
+            return;
+        }
+        super.onBackPressed();
     }
 
     private int dp(float value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    private void addPressMotion(View view) {
+        view.setOnTouchListener((target, event) -> {
+            int action = event.getActionMasked();
+            if (action == android.view.MotionEvent.ACTION_DOWN) {
+                target.animate().scaleX(0.95f).scaleY(0.95f).setDuration(90L).start();
+            } else if (action == android.view.MotionEvent.ACTION_UP
+                    || action == android.view.MotionEvent.ACTION_CANCEL) {
+                target.animate().scaleX(1f).scaleY(1f).setDuration(160L)
+                        .setInterpolator(new android.view.animation.OvershootInterpolator(1.15f))
+                        .start();
+            }
+            return false;
+        });
     }
 
     private GradientDrawable rounded(int color, float radiusDp) {
@@ -646,21 +875,25 @@ public final class MainActivity extends Activity {
     private android.graphics.drawable.Drawable glassControl(int color, float radiusDp) {
         GradientDrawable control = rounded(color, radiusDp);
         control.setStroke(dp(1), 0x35E5F1FF);
-        return control;
+        return new android.graphics.drawable.RippleDrawable(
+                android.content.res.ColorStateList.valueOf(0x44FFFFFF), control,
+                rounded(Color.WHITE, radiusDp));
     }
 
     private void renderTaskbar(FrameLayout root) {
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(16), dp(5), dp(16), dp(5));
-        bar.setBackground(rounded(0xA8161D2A, 0));
+        bar.setPadding(dp(12), dp(7), dp(12), dp(7));
+        bar.setBackground(glassPanel(0xA3121D2C, 32));
         bar.setElevation(dp(24));
 
         TextView start = text("⊞", 26, true);
         start.setTextColor(0xFFF4F7FC);
         start.setGravity(Gravity.CENTER);
-        start.setBackground(rounded(0xFF2876D2, 10));
+        start.setContentDescription("Buka Start");
+        start.setBackground(glassControl(0x784B79C5, 15));
+        addPressMotion(start);
         start.setOnClickListener(v -> setDrawerVisible(
                 appDrawer == null || appDrawer.getVisibility() != View.VISIBLE));
         bar.addView(start, new LinearLayout.LayoutParams(dp(44), dp(40)));
@@ -669,8 +902,13 @@ public final class MainActivity extends Activity {
         search.setTextColor(0xFFE0E7F1);
         search.setGravity(Gravity.CENTER_VERTICAL);
         search.setPadding(dp(13), 0, dp(16), 0);
-        search.setBackground(rounded(0xFF30394A, 10));
-        search.setOnClickListener(v -> setDrawerVisible(true));
+        search.setContentDescription("Cari aplikasi");
+        search.setBackground(glassControl(0x4A344257, 18));
+        addPressMotion(search);
+        search.setOnClickListener(v -> {
+            setDrawerVisible(true);
+            if (drawerSearch != null) drawerSearch.post(this::focusDrawerSearch);
+        });
         LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(dp(132), dp(36));
         searchParams.setMargins(dp(10), 0, dp(16), 0);
         bar.addView(search, searchParams);
@@ -693,7 +931,9 @@ public final class MainActivity extends Activity {
         TextView quick = text("⌃", 18, true);
         quick.setTextColor(0xFFE8EDF6);
         quick.setGravity(Gravity.CENTER);
-        quick.setBackground(rounded(0xFF30394A, 9));
+        quick.setContentDescription("Quick settings Forkdex");
+        quick.setBackground(glassControl(0x6237465B, 14));
+        addPressMotion(quick);
         quick.setOnClickListener(v -> showTaskbarPanel());
         LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(dp(34), dp(34));
         quickParams.setMargins(dp(10), 0, dp(8), 0);
@@ -705,23 +945,38 @@ public final class MainActivity extends Activity {
         taskbarClock = text("--:--", 12, true);
         taskbarClock.setTextColor(0xFFF1F4F9);
         taskbarClock.setGravity(Gravity.CENTER);
-        TextView date = text(new java.text.SimpleDateFormat("dd/MM/yyyy",
+        taskbarDate = text(new java.text.SimpleDateFormat("EEE, d MMM",
                 java.util.Locale.getDefault()).format(new java.util.Date()), 9, false);
-        date.setTextColor(0xFFB8C3D3);
-        date.setGravity(Gravity.CENTER);
+        taskbarDate.setTextColor(0xFFB8C3D3);
+        taskbarDate.setGravity(Gravity.CENTER);
         clockBox.addView(taskbarClock);
-        clockBox.addView(date);
+        clockBox.addView(taskbarDate);
+        clockBox.setContentDescription("Jam dan tanggal");
         clockBox.setOnClickListener(v -> showTaskbarPanel());
         bar.addView(clockBox, new LinearLayout.LayoutParams(dp(68), dp(40)));
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                -1, dp(58), Gravity.BOTTOM);
+                -1, dp(66), Gravity.BOTTOM);
+        params.setMargins(dp(14), 0, dp(14), dp(10));
         root.addView(bar, params);
         refreshTaskbarTasks();
     }
 
     private void refreshTaskbarTasks() {
-        if (taskButtons == null || !windowClient.isConnected()) return;
+        if (taskButtons == null || !activityResumed) return;
+        if (!windowClient.isConnected()) {
+            taskButtons.removeAllViews();
+            TextView status = text(windowClient.isBinding()
+                    ? "Menghubungkan Shizuku…" : "Hubungkan Shizuku untuk jendela", 11, false);
+            status.setTextColor(0xFFCED9EA);
+            status.setGravity(Gravity.CENTER_VERTICAL);
+            status.setContentDescription(windowClient.connectionStatus());
+            status.setOnClickListener(v -> showShizukuDialog());
+            taskButtons.addView(status, new LinearLayout.LayoutParams(-2, dp(40)));
+            return;
+        }
+        if (taskRefreshInFlight) return;
+        taskRefreshInFlight = true;
         final int displayId = currentDisplayId();
         new Thread(() -> {
             try {
@@ -729,8 +984,15 @@ public final class MainActivity extends Activity {
                 JSONArray tasks = new JSONArray(raw);
                 saveActiveWindowBounds(tasks);
                 runOnUiThread(() -> {
+                    taskRefreshInFlight = false;
                     if (taskButtons == null) return;
                     taskButtons.removeAllViews();
+                    if (tasks.length() == 0) {
+                        TextView empty = text("Tidak ada jendela aktif", 11, false);
+                        empty.setTextColor(0xFFB8C3D3);
+                        empty.setGravity(Gravity.CENTER_VERTICAL);
+                        taskButtons.addView(empty, new LinearLayout.LayoutParams(-2, dp(40)));
+                    }
                     for (int i = 0; i < tasks.length(); i++) {
                         JSONObject task = tasks.optJSONObject(i);
                         if (task == null) continue;
@@ -738,8 +1000,9 @@ public final class MainActivity extends Activity {
                         String pkg = task.optString("packageName", "App");
                         boolean focused = task.optBoolean("focused", false);
                         FrameLayout item = new FrameLayout(this);
-                        item.setBackground(rounded(
-                                focused ? Color.rgb(61, 72, 103) : Color.TRANSPARENT, 9));
+                        item.setBackground(glassControl(
+                                focused ? 0x874B668D : 0x15212D40, 13));
+                        addPressMotion(item);
                         item.setContentDescription(applicationLabel(pkg));
                         ImageView icon = new ImageView(this);
                         icon.setImageDrawable(applicationIcon(pkg));
@@ -774,6 +1037,7 @@ public final class MainActivity extends Activity {
                     }
                 });
             } catch (Exception error) {
+                runOnUiThread(() -> taskRefreshInFlight = false);
                 ForkdexErrorLog.add(this, "Taskbar task refresh", error);
             }
         }, "Forkdex-Taskbar-Refresh").start();
@@ -1075,9 +1339,20 @@ public final class MainActivity extends Activity {
         String log = ForkdexErrorLog.read(this);
         if (log == null || log.trim().isEmpty()) log = "Belum ada log error. Tekan Sambungkan layanan, lalu ulangi masalah agar diagnostik tercatat.";
         final String currentLog = log;
+        TextView logText = text(currentLog, 11, false);
+        logText.setTypeface(android.graphics.Typeface.MONOSPACE);
+        logText.setTextIsSelectable(true);
+        logText.setTextColor(0xFFE0E8F4);
+        logText.setPadding(dp(14), dp(12), dp(14), dp(12));
+        android.widget.ScrollView logScroll = new android.widget.ScrollView(this);
+        logScroll.setFillViewport(false);
+        logScroll.setVerticalScrollBarEnabled(true);
+        logScroll.setBackground(glassControl(0x65303C50, 16));
+        logScroll.addView(logText, new android.widget.ScrollView.LayoutParams(-1, -2));
+        logScroll.setLayoutParams(new android.view.ViewGroup.LayoutParams(-1, dp(420)));
         new AlertDialog.Builder(this)
                 .setTitle("Forkdex • Log Error")
-                .setMessage(currentLog)
+                .setView(logScroll)
                 .setPositiveButton("Salin Log", (dialog, which) -> {
                     ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                     clipboard.setPrimaryClip(ClipData.newPlainText("Forkdex error log", currentLog));
@@ -1134,6 +1409,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onResume() {
         super.onResume();
+        activityResumed = true;
         taskbarHandler.removeCallbacks(taskbarTicker);
         taskbarHandler.post(taskbarTicker);
         if (shizuku != null) {
@@ -1142,12 +1418,22 @@ public final class MainActivity extends Activity {
         }
     }
 
+    @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
+        String query = drawerSearch == null ? "" : drawerSearch.getText().toString();
+        super.onConfigurationChanged(configuration);
+        render();
+        if (!query.isEmpty() && drawerSearch != null) drawerSearch.setText(query);
+    }
+
     @Override protected void onPause() {
+        activityResumed = false;
         super.onPause();
         taskbarHandler.removeCallbacks(taskbarTicker);
     }
 
     @Override protected void onDestroy() {
+        activityResumed = false;
+        taskbarHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
         if (displayManager != null) {
             try { displayManager.unregisterDisplayListener(displayListener); }

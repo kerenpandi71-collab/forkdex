@@ -1,7 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
  <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
  <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
- <application android:allowBackup="true" android:label="Forkdex" android:theme="@android:style/Theme.Material.NoActionBar">
+ <application android:allowBackup="true" android:label="Forkdex" android:theme="@style/ForkdexTheme">
   <provider
    android:name="rikka.shizuku.ShizukuProvider"
    android:authorities="${applicationId}.shizuku"

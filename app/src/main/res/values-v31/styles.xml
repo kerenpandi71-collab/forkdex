@@ -1,0 +1,13 @@
+<resources>
+    <style name="ForkdexDialogTheme" parent="android:style/Theme.Material.Dialog.Alert">
+        <item name="android:colorAccent">#A9C9FF</item>
+        <item name="android:windowBackground">@drawable/forkdex_glass_dialog</item>
+        <item name="android:windowMinWidthMajor">82%</item>
+        <item name="android:windowMinWidthMinor">88%</item>
+        <item name="android:backgroundDimAmount">0.34</item>
+        <item name="android:windowBackgroundBlurRadius">24dp</item>
+        <item name="android:windowBlurBehindEnabled">true</item>
+        <item name="android:windowBlurBehindRadius">18dp</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+    </style>
+</resources>
