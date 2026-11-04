@@ -1047,34 +1047,16 @@ public final class MainActivity extends Activity {
         bar.setBackground(glassPanel(0xA3121D2C, 32));
         bar.setElevation(dp(24));
 
-        TextView start = text("⊞", 26, true);
-        start.setTextColor(0xFFF4F7FC);
-        start.setGravity(Gravity.CENTER);
-        start.setContentDescription("Buka Start");
+        ImageView start = new ImageView(this);
+        start.setImageResource(R.drawable.forkdex_logo);
+        start.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        start.setPadding(dp(5), dp(5), dp(5), dp(5));
+        start.setContentDescription("Forkdex — Buka Start");
         start.setBackground(glassControl(0x784B79C5, 15));
         addPressMotion(start);
         start.setOnClickListener(v -> setDrawerVisible(
                 appDrawer == null || appDrawer.getVisibility() != View.VISIBLE));
-        bar.addView(start, new LinearLayout.LayoutParams(dp(44), dp(40)));
-
-        int screenWidthDp = Math.round(getResources().getDisplayMetrics().widthPixels
-                / getResources().getDisplayMetrics().density);
-        boolean compactDock = screenWidthDp < 400;
-        TextView search = text(compactDock ? "⌕" : "⌕  Cari", 13, false);
-        search.setTextColor(0xFFE0E7F1);
-        search.setGravity(compactDock ? Gravity.CENTER : Gravity.CENTER_VERTICAL);
-        search.setPadding(dp(13), 0, dp(16), 0);
-        search.setContentDescription("Cari aplikasi");
-        search.setBackground(glassControl(0x4A344257, 18));
-        addPressMotion(search);
-        search.setOnClickListener(v -> {
-            setDrawerVisible(true);
-            if (drawerSearch != null) drawerSearch.post(this::focusDrawerSearch);
-        });
-        LinearLayout.LayoutParams searchParams = new LinearLayout.LayoutParams(
-                dp(compactDock ? 44 : 120), dp(36));
-        searchParams.setMargins(dp(10), 0, dp(16), 0);
-        bar.addView(search, searchParams);
+        bar.addView(start, new LinearLayout.LayoutParams(dp(46), dp(42)));
 
         android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
         scroll.setHorizontalScrollBarEnabled(false);
@@ -1086,7 +1068,7 @@ public final class MainActivity extends Activity {
         taskButtons.setGravity(Gravity.CENTER_VERTICAL);
         scroll.addView(taskButtons, new android.widget.HorizontalScrollView.LayoutParams(-2, -1));
         LinearLayout.LayoutParams taskParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
-        taskParams.setMargins(dp(4), 0, dp(10), 0);
+        taskParams.setMargins(dp(10), 0, dp(10), 0);
         bar.addView(scroll, taskParams);
 
         View divider = new View(this);
