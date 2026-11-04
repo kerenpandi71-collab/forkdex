@@ -12,6 +12,7 @@ Forkdex adalah aplikasi launcher Android dengan desktop shell ringan: drawer Sta
 - Dock/taskbar kaca mengambang dengan shortcut Start/search, status Shizuku, daftar jendela aplikasi aktif/terbaru (bukan pin favorit), serta tanggal dan waktu.
 - Panel dan dialog memakai latar liquid-glass transparan, refleksi tepi, ripple serta animasi interaksi. Android 12+ dapat menerapkan blur window jika perangkat mendukungnya; versi lama tetap memakai fallback transparan.
 - Mode Freeform, kontrol jendela, dan profil skala aplikasi 50–200% melalui layanan Shizuku jika izin serta firmware perangkat mengizinkan.
+- Aksi jendela menyediakan preset hampir penuh tetap mengambang, pembagian area 50% mengikuti orientasi, dan pemulihan ke ukuran freeform sebelumnya. Caption bar bawaan Android tetap dikendalikan ROM.
 - Back menutup drawer terlebih dahulu; ketuk di luar drawer untuk menutupnya. Pencarian dan visibilitas drawer dipertahankan saat ukuran/orientasi layar berubah.
 
 ## Batasan kompatibilitas

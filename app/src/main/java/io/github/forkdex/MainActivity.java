@@ -1481,8 +1481,9 @@ public final class MainActivity extends Activity {
                 saved.optInt("right"), saved.optInt("bottom"));
         final int id = taskId;
         final Rect previousBounds = new Rect(bounds);
-        String[] actions = {"Bawa ke depan", "Minimalkan", "Maksimalkan",
-                "Kembalikan ke Freeform", "Tutup aplikasi"};
+        String[] actions = {"Bawa ke depan", "Minimalkan", "Maksimalkan layar",
+                "Jendela besar · tetap mengambang", "Bagi area 50%",
+                "Kembalikan ke ukuran Freeform", "Tutup aplikasi"};
         new AlertDialog.Builder(this).setTitle(task.optString("packageName"))
                 .setItems(actions, (dialog, which) -> {
                     new Thread(() -> {
@@ -1492,16 +1493,35 @@ public final class MainActivity extends Activity {
                             else if (which == 1) result = windowClient.minimizeTask(displayId, id);
                             else if (which == 2) result = windowClient.setTaskMode(
                                     displayId, id, 1, new Rect());
-                            else if (which == 3) {
-                                if (previousBounds.isEmpty()) {
-                                    DisplayMetrics dm = new DisplayMetrics();
-                                    getWindowManager().getDefaultDisplay().getRealMetrics(dm);
-                                    int margin = Math.max(24, (int)(24 * dm.density));
-                                    previousBounds.set(margin, Math.max(48, margin * 2),
-                                            Math.max(margin + 240, dm.widthPixels - margin),
-                                            Math.max(360, dm.heightPixels - margin));
+                            else if (which >= 3 && which <= 5) {
+                                DisplayMetrics dm = new DisplayMetrics();
+                                getWindowManager().getDefaultDisplay().getRealMetrics(dm);
+                                Rect target;
+                                if (which == 3) {
+                                    int horizontal = Math.max(dp(12), dm.widthPixels / 20);
+                                    int top = Math.max(dp(42), dm.heightPixels / 30);
+                                    int bottom = Math.max(dp(20), dm.heightPixels / 30);
+                                    target = new Rect(horizontal, top,
+                                            dm.widthPixels - horizontal, dm.heightPixels - bottom);
+                                } else if (which == 4) {
+                                    if (dm.widthPixels >= dm.heightPixels) {
+                                        int mid = dm.widthPixels / 2;
+                                        target = new Rect(0, 0, mid, dm.heightPixels);
+                                    } else {
+                                        int mid = dm.heightPixels / 2;
+                                        target = new Rect(0, 0, dm.widthPixels, mid);
+                                    }
+                                } else if (!previousBounds.isEmpty()) {
+                                    target = new Rect(previousBounds);
+                                } else {
+                                    int insetX = dm.widthPixels / 10;
+                                    int insetY = dm.heightPixels / 10;
+                                    target = new Rect(insetX, Math.max(dp(42), insetY),
+                                            dm.widthPixels - insetX, dm.heightPixels - insetY);
                                 }
-                                result = windowClient.setTaskMode(displayId, id, 5, previousBounds);
+                                if (mode != 5) result = windowClient.setTaskMode(
+                                        displayId, id, 5, target);
+                                else result = windowClient.resizeTask(displayId, id, target);
                             } else result = windowClient.closeTask(id);
                         } catch (Exception error) {
                             result = "Window action gagal: " + error.getMessage();
