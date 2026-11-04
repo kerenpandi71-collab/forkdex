@@ -646,7 +646,7 @@ public final class MainActivity extends Activity {
         if (requestCode == REQUEST_UNINSTALL_APP) {
             // Refresh launcher entries after returning from the system package installer.
             getWindow().getDecorView().postDelayed(() -> {
-                loadInstalledApps();
+                loadApps();
                 populateDrawerApps(apps, clonedApps);
                 populatePinnedApps();
             }, 700L);
