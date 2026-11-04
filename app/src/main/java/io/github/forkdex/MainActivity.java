@@ -155,6 +155,7 @@ public final class MainActivity extends Activity {
     private LinearLayout drawerApps;
     private android.widget.HorizontalScrollView pinnedScroll;
     private TextView sortButton;
+    private TextView viewButton;
     private boolean drawerVisible = false;
 
     private void render() {
@@ -289,6 +290,21 @@ public final class MainActivity extends Activity {
         sortButton.setContentDescription("Urutkan daftar aplikasi");
         sortButton.setOnClickListener(v -> showSortOptions());
         section.addView(sortButton, new LinearLayout.LayoutParams(-2, dp(32)));
+        viewButton = text(isDrawerListView() ? "☷" : "▦", 19, true);
+        viewButton.setTextColor(0xFFE6EDF8);
+        viewButton.setGravity(Gravity.CENTER);
+        viewButton.setBackground(glassControl(0x703E4B61, 10));
+        viewButton.setContentDescription("Ganti tampilan Grid atau List");
+        LinearLayout.LayoutParams viewParams = new LinearLayout.LayoutParams(dp(38), dp(32));
+        viewParams.setMargins(dp(6), 0, 0, 0);
+        section.addView(viewButton, viewParams);
+        viewButton.setOnClickListener(v -> {
+            boolean listMode = !isDrawerListView();
+            getSharedPreferences("launcher_preferences", MODE_PRIVATE).edit()
+                    .putBoolean("drawer_list_view", listMode).apply();
+            viewButton.setText(listMode ? "☷" : "▦");
+            refreshDrawerAppsForCurrentQuery();
+        });
         appDrawer.addView(section);
 
         android.widget.ScrollView scroll = new android.widget.ScrollView(this);
@@ -646,6 +662,31 @@ public final class MainActivity extends Activity {
         row.addView(button, p);
     }
 
+    private boolean isDrawerListView() {
+        return getSharedPreferences("launcher_preferences", MODE_PRIVATE)
+                .getBoolean("drawer_list_view", false);
+    }
+
+    private void refreshDrawerAppsForCurrentQuery() {
+        String query = drawerSearch == null ? "" : drawerSearch.getText().toString().trim()
+                .toLowerCase(java.util.Locale.getDefault());
+        List<ResolveInfo> filtered = new ArrayList<>();
+        for (ResolveInfo app : apps) {
+            String label = app.loadLabel(getPackageManager()).toString()
+                    .toLowerCase(java.util.Locale.getDefault());
+            if (label.contains(query) && !isHiddenApp(app.activityInfo.packageName)) filtered.add(app);
+        }
+        List<LauncherActivityInfo> filteredClones = new ArrayList<>();
+        for (LauncherActivityInfo clone : clonedApps) {
+            String label = clone.getLabel() == null ? "" : clone.getLabel().toString();
+            if (label.toLowerCase(java.util.Locale.getDefault()).contains(query)
+                    && !isHiddenApp(clone.getComponentName().getPackageName())) {
+                filteredClones.add(clone);
+            }
+        }
+        populateDrawerApps(filtered, filteredClones);
+    }
+
     private void populateDrawerApps(List<ResolveInfo> source, List<LauncherActivityInfo> cloneSource) {
         if (drawerApps == null) return;
         drawerApps.removeAllViews();
@@ -669,7 +710,7 @@ public final class MainActivity extends Activity {
             label.setIncludeFontPadding(false);
             tile.addView(label, new LinearLayout.LayoutParams(-1, dp(32)));
             tile.setContentDescription(labelText);
-            tile.setBackground(tileSurface(0x0CFFFFFF, 14));
+            tile.setBackgroundColor(Color.TRANSPARENT);
             tile.setTooltipText(labelText);
             addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchSelectedApp(app); });
@@ -694,13 +735,38 @@ public final class MainActivity extends Activity {
             label.setIncludeFontPadding(false);
             tile.addView(label, new LinearLayout.LayoutParams(-1, dp(32)));
             tile.setContentDescription(name + ", profil lain");
-            tile.setBackground(tileSurface(0x103E6BA5, 14));
+            tile.setBackgroundColor(Color.TRANSPARENT);
             tile.setTooltipText(name + " · Profil lain");
             addPressMotion(tile);
             tile.setOnClickListener(v -> { setDrawerVisible(false); launchClonedApp(clone); });
             tile.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
             tiles.add(tile);
         }
+        if (isDrawerListView()) {
+            for (int i = 0; i < tiles.size(); i++) {
+                // Rebuild each app entry as a flat row: no tile/card background.
+                View tile = tiles.get(i);
+                if (tile instanceof LinearLayout) {
+                    LinearLayout item = (LinearLayout) tile;
+                    item.setOrientation(LinearLayout.HORIZONTAL);
+                    item.setGravity(Gravity.CENTER_VERTICAL);
+                    item.setPadding(dp(10), dp(4), dp(10), dp(4));
+                    ImageView icon = (ImageView) item.getChildAt(0);
+                    LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(40), dp(40));
+                    item.updateViewLayout(icon, iconParams);
+                    TextView label = (TextView) item.getChildAt(1);
+                    label.setGravity(Gravity.CENTER_VERTICAL | Gravity.LEFT);
+                    label.setTextSize(14);
+                    LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(0, -1, 1f);
+                    labelParams.setMargins(dp(14), 0, 0, 0);
+                    item.updateViewLayout(label, labelParams);
+                    item.setBackgroundColor(Color.TRANSPARENT);
+                    LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, dp(56));
+                    rowParams.setMargins(0, dp(1), 0, dp(1));
+                    drawerApps.addView(item, rowParams);
+                }
+            }
+        } else {
         float density = getResources().getDisplayMetrics().density;
         int panelWidthPx = appDrawer != null && appDrawer.getLayoutParams() != null
                 ? appDrawer.getLayoutParams().width : getResources().getDisplayMetrics().widthPixels;
@@ -720,6 +786,7 @@ public final class MainActivity extends Activity {
                 row.addView(empty, new LinearLayout.LayoutParams(0, dp(94), 1f));
             }
             drawerApps.addView(row, new LinearLayout.LayoutParams(-1, dp(98)));
+        }
         }
         if (tiles.isEmpty()) {
             TextView empty = text("Tidak ada aplikasi yang cocok. Coba kata kunci lain.", 13, false);
