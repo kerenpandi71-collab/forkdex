@@ -51,6 +51,10 @@ public final class MainActivity extends Activity {
     private LinearLayout taskButtons;
     private TextView taskbarClock;
     private TextView taskbarDate;
+    private LinearLayout desktopShortcuts;
+    private FrameLayout quickSettingsOverlay;
+    private boolean quickSettingsVisible;
+    private boolean localDarkMode = true;
     private EditText drawerSearch;
     private boolean taskRefreshInFlight;
     private boolean activityResumed;
@@ -104,8 +108,8 @@ public final class MainActivity extends Activity {
             }
             refreshTaskbarTasks();
         }));
-        getWindow().setStatusBarColor(Color.rgb(22, 29, 42));
-        getWindow().setNavigationBarColor(Color.rgb(22, 29, 42));
+        getWindow().setStatusBarColor(Color.BLACK);
+        getWindow().setNavigationBarColor(0xFF0E0E0F);
         loadApps();
         render();
     }
@@ -159,40 +163,130 @@ public final class MainActivity extends Activity {
     private boolean drawerVisible = false;
 
     private void render() {
-        // Ask Android to draw the current system wallpaper behind the launcher window.
-        // This also supports live wallpapers and avoids relying on getDrawable(), which
-        // may return null or a stale image on newer Android releases.
         try {
-            getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
-            getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
+            getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
+            getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.BLACK));
             getWindow().setDimAmount(0f);
         } catch (Throwable error) {
-            ForkdexErrorLog.add(this, "Enable system wallpaper background", error);
+            ForkdexErrorLog.add(this, "Set DeX desktop background", error);
         }
 
         desktopRoot = new FrameLayout(this);
-        desktopRoot.setBackgroundColor(Color.TRANSPARENT);
+        desktopRoot.setBackgroundColor(localDarkMode ? Color.BLACK : 0xFF17191D);
         setContentView(desktopRoot);
 
-        // Light dim layer keeps desktop controls readable without replacing the wallpaper.
-        View shade = new View(this);
-        shade.setBackgroundColor(0x05000000);
-        desktopRoot.addView(shade, new FrameLayout.LayoutParams(-1, -1));
-
         if (currentDisplayId() != Display.DEFAULT_DISPLAY) {
-            TextView displayLabel = text("DESKTOP  •  " + displayName(currentDisplayId()), 12, true);
+            TextView displayLabel = text(displayName(currentDisplayId()), 12, true);
             displayLabel.setTextColor(Color.WHITE);
-            displayLabel.setBackground(glassControl(0x8A1B2638, 16));
-            displayLabel.setPadding(dp(12), dp(7), dp(12), dp(7));
+            displayLabel.setBackground(glassControl(0xB51B1B1B, 18));
+            displayLabel.setPadding(dp(14), dp(8), dp(14), dp(8));
             FrameLayout.LayoutParams labelParams = new FrameLayout.LayoutParams(-2, -2,
-                    Gravity.TOP | Gravity.RIGHT);
-            labelParams.setMargins(0, dp(12), dp(12), 0);
+                    Gravity.TOP | Gravity.LEFT);
+            labelParams.setMargins(dp(16), dp(16), 0, 0);
             desktopRoot.addView(displayLabel, labelParams);
         }
 
+        renderDesktopShortcuts(desktopRoot);
         renderTaskbar(desktopRoot);
         createAppDrawer();
         setDrawerVisible(drawerVisible);
+        renderQuickSettingsPanel(desktopRoot);
+        setQuickSettingsVisible(quickSettingsVisible);
+    }
+
+    private void renderDesktopShortcuts(FrameLayout root) {
+        desktopShortcuts = new LinearLayout(this);
+        boolean portrait = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_PORTRAIT;
+        desktopShortcuts.setOrientation(portrait ? LinearLayout.VERTICAL : LinearLayout.HORIZONTAL);
+        desktopShortcuts.setGravity(Gravity.CENTER);
+        desktopShortcuts.setPadding(dp(10), dp(6), dp(10), dp(6));
+
+        java.util.Set<String> pinned = getSharedPreferences("launcher_preferences", MODE_PRIVATE)
+                .getStringSet("pinned_apps", Collections.emptySet());
+        List<ResolveInfo> shortcuts = new ArrayList<>();
+        for (ResolveInfo app : apps) {
+            String pkg = app.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || isHiddenApp(pkg)) continue;
+            if (pinned.contains(pkg)) shortcuts.add(app);
+        }
+        for (ResolveInfo app : apps) {
+            if (shortcuts.size() >= 8) break;
+            String pkg = app.activityInfo.packageName;
+            if (pkg.equals(getPackageName()) || isHiddenApp(pkg) || shortcuts.contains(app)) continue;
+            shortcuts.add(app);
+        }
+        if (shortcuts.size() > 8) shortcuts = new ArrayList<>(shortcuts.subList(0, 8));
+
+        int columns = portrait ? 4 : Math.max(1, shortcuts.size());
+        if (portrait) {
+            android.widget.GridLayout grid = new android.widget.GridLayout(this);
+            grid.setColumnCount(columns);
+            grid.setRowCount(Math.max(1, (shortcuts.size() + columns - 1) / columns));
+            grid.setAlignmentMode(android.widget.GridLayout.ALIGN_BOUNDS);
+            int screenWidth = getResources().getDisplayMetrics().widthPixels;
+            int cellWidth = Math.max(dp(62), Math.min(dp(86), (screenWidth - dp(56)) / columns));
+            for (int i = 0; i < shortcuts.size(); i++) {
+                ResolveInfo app = shortcuts.get(i);
+                android.widget.GridLayout.LayoutParams cell = new android.widget.GridLayout.LayoutParams(
+                        android.widget.GridLayout.spec(i / columns),
+                        android.widget.GridLayout.spec(i % columns));
+                cell.width = cellWidth;
+                cell.height = dp(102);
+                cell.setMargins(dp(2), dp(3), dp(2), dp(3));
+                grid.addView(createDesktopShortcut(app), cell);
+            }
+            desktopShortcuts.addView(grid, new LinearLayout.LayoutParams(-2, -2));
+        } else {
+            android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
+            scroll.setHorizontalScrollBarEnabled(false);
+            scroll.setFillViewport(false);
+            LinearLayout row = new LinearLayout(this);
+            row.setGravity(Gravity.CENTER);
+            for (ResolveInfo app : shortcuts) {
+                LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(dp(86), dp(106));
+                params.setMargins(dp(3), 0, dp(3), 0);
+                row.addView(createDesktopShortcut(app), params);
+            }
+            scroll.addView(row, new android.widget.HorizontalScrollView.LayoutParams(-2, -2));
+            desktopShortcuts.addView(scroll, new LinearLayout.LayoutParams(-2, -2));
+        }
+
+        int screenHeight = getResources().getDisplayMetrics().heightPixels;
+        int top = portrait ? Math.max(dp(96), (screenHeight - dp(216)) / 2)
+                : Math.max(dp(96), (int) (screenHeight * 0.61f) - dp(52));
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(-2, -2,
+                Gravity.TOP | Gravity.CENTER_HORIZONTAL);
+        params.topMargin = top;
+        params.leftMargin = dp(8);
+        params.rightMargin = dp(8);
+        root.addView(desktopShortcuts, params);
+    }
+
+    private View createDesktopShortcut(ResolveInfo app) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setPadding(dp(4), dp(5), dp(4), dp(4));
+        ImageView icon = new ImageView(this);
+        icon.setImageDrawable(app.loadIcon(getPackageManager()));
+        icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+        tile.addView(icon, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        TextView label = text(app.loadLabel(getPackageManager()).toString(), 11, false);
+        label.setGravity(Gravity.CENTER);
+        label.setTextColor(0xFFF5F5F5);
+        label.setMaxLines(2);
+        label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        label.setShadowLayer(dp(2), 0f, dp(1), Color.BLACK);
+        LinearLayout.LayoutParams labelParams = new LinearLayout.LayoutParams(-1, dp(34));
+        labelParams.topMargin = dp(3);
+        tile.addView(label, labelParams);
+        tile.setContentDescription(app.loadLabel(getPackageManager()).toString());
+        tile.setBackground(tileSurface(0x00000000, 12));
+        tile.setOnClickListener(v -> launchSelectedApp(app));
+        tile.setOnLongClickListener(v -> { showAppActions(app); return true; });
+        addPressMotion(tile);
+        return tile;
     }
 
     private LinearLayout pinnedApps;
@@ -201,12 +295,12 @@ public final class MainActivity extends Activity {
         appDrawer = new LinearLayout(this);
         appDrawer.setOrientation(LinearLayout.VERTICAL);
         appDrawer.setPadding(dp(18), dp(14), dp(18), dp(12));
-        appDrawer.setBackground(glassPanel(0xD51B293D, 24));
+        appDrawer.setBackground(glassPanel(0xF0212121, 24));
         appDrawer.setElevation(dp(32));
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("Start", 23, true);
+        TextView title = text("Apps", 23, true);
         title.setTextColor(0xFFF7F9FC);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(42), 1f));
         TextView tools = text("⋯", 25, true);
@@ -233,7 +327,7 @@ public final class MainActivity extends Activity {
         search.setHintTextColor(0xFF9EABC0);
         search.setTextColor(0xFFF4F7FC);
         search.setPadding(dp(15), 0, dp(15), 0);
-        search.setBackground(glassControl(0xA6334156, 15));
+        search.setBackground(glassControl(0xFF333333, 15));
         search.setCompoundDrawablePadding(dp(8));
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         search.setInputType(android.text.InputType.TYPE_CLASS_TEXT
@@ -919,31 +1013,221 @@ public final class MainActivity extends Activity {
     }
 
     private void showTaskbarPanel() {
-        String[] actions = {"Per-App DPI", "Shizuku", "Log diagnostik", "Jendela berjalan",
-                "Desktop Mode", "Kembali ke mode normal",
-                getSharedPreferences("desktop_preferences", MODE_PRIVATE).getBoolean("freeform_enabled", true)
-                        ? "Mode jendela: Freeform (ketuk untuk Normal)"
-                        : "Mode jendela: Normal (ketuk untuk Freeform)"};
-        new AlertDialog.Builder(this).setTitle("Quick settings  •  Forkdex")
-            .setItems(actions, (dialog, which) -> {
-                switch (which) {
-                    case 0: showProfiles(); break;
-                    case 1: showShizukuDialog(); break;
-                    case 2: showErrorLogs(); break;
-                    case 3: showWindows(); break;
-                    case 4: showDesktopModeSetup(); break;
-                    case 6: toggleWindowMode(); break;
-                    case 5:
-                        if (currentDisplayId() != Display.DEFAULT_DISPLAY) {
-                            Toast.makeText(this, "Pilih Home launcher normal pada layar utama Android.", Toast.LENGTH_LONG).show();
-                            finish();
-                        } else {
-                            setDrawerVisible(false);
-                            Toast.makeText(this, "Forkdex kembali ke tampilan utama.", Toast.LENGTH_SHORT).show();
-                        }
-                        break;
+        setQuickSettingsVisible(quickSettingsOverlay == null
+                || quickSettingsOverlay.getVisibility() != View.VISIBLE);
+    }
+
+    private void renderQuickSettingsPanel(FrameLayout root) {
+        quickSettingsOverlay = new FrameLayout(this);
+        quickSettingsOverlay.setVisibility(View.GONE);
+        quickSettingsOverlay.setOnClickListener(v -> setQuickSettingsVisible(false));
+
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(18), dp(16), dp(18), dp(14));
+        panel.setBackground(glassPanel(0xF2222222, 28));
+        panel.setElevation(dp(28));
+        panel.setOnClickListener(v -> { });
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        TextView title = text("Quick settings", 19, true);
+        title.setTextColor(Color.WHITE);
+        header.addView(title, new LinearLayout.LayoutParams(0, dp(34), 1f));
+        TextView systemSettings = text("⚙", 20, true);
+        systemSettings.setGravity(Gravity.CENTER);
+        systemSettings.setContentDescription("Pengaturan Android");
+        systemSettings.setBackground(glassControl(0xFF363636, 18));
+        systemSettings.setOnClickListener(v -> openSystemSettings());
+        header.addView(systemSettings, new LinearLayout.LayoutParams(dp(40), dp(38)));
+        TextView close = text("×", 24, false);
+        close.setGravity(Gravity.CENTER);
+        close.setBackground(glassControl(0xFF363636, 18));
+        close.setOnClickListener(v -> setQuickSettingsVisible(false));
+        LinearLayout.LayoutParams closeParams = new LinearLayout.LayoutParams(dp(40), dp(38));
+        closeParams.setMargins(dp(7), 0, 0, 0);
+        header.addView(close, closeParams);
+        panel.addView(header);
+
+        LinearLayout content = new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+
+        LinearLayout radioRow = new LinearLayout(this);
+        radioRow.setOrientation(LinearLayout.HORIZONTAL);
+        radioRow.setPadding(0, dp(12), 0, dp(9));
+        radioRow.addView(createWideQuickTile("◉", "Wi-Fi", "Pengaturan Wi-Fi",
+                android.provider.Settings.ACTION_WIFI_SETTINGS), weightedTileParams());
+        radioRow.addView(createWideQuickTile("ᛒ", "Bluetooth", "Pengaturan Bluetooth",
+                android.provider.Settings.ACTION_BLUETOOTH_SETTINGS), weightedTileParams());
+        content.addView(radioRow, new LinearLayout.LayoutParams(-1, dp(70)));
+
+        android.widget.GridLayout tiles = new android.widget.GridLayout(this);
+        tiles.setColumnCount(4);
+        addQuickTile(tiles, "◖", "Sound", () -> openSettingsAction(android.provider.Settings.ACTION_SOUND_SETTINGS));
+        addQuickTile(tiles, "↕", "Mobile\ndata", () -> openSettingsAction(android.provider.Settings.ACTION_WIRELESS_SETTINGS));
+        addQuickTile(tiles, "DeX", "Forkdex", this::showDesktopModeSetup);
+        addQuickTile(tiles, localDarkMode ? "☾" : "☼", "Dark mode\n(Forkdex)", this::toggleDesktopTheme);
+        content.addView(tiles, new LinearLayout.LayoutParams(-1, dp(134)));
+
+        LinearLayout recorder = new LinearLayout(this);
+        recorder.setGravity(Gravity.CENTER_VERTICAL);
+        recorder.setPadding(dp(12), 0, dp(12), 0);
+        recorder.setBackground(glassControl(0xFF303030, 18));
+        TextView recordIcon = text("▣", 20, true);
+        recordIcon.setGravity(Gravity.CENTER);
+        recorder.addView(recordIcon, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        LinearLayout recordText = new LinearLayout(this);
+        recordText.setOrientation(LinearLayout.VERTICAL);
+        TextView recordTitle = text("Screen recorder", 13, true);
+        TextView recordSubtitle = text("Buka Quick Settings sistem", 10, false);
+        recordSubtitle.setTextColor(0xFFBDBDBD);
+        recordText.addView(recordTitle);
+        recordText.addView(recordSubtitle);
+        recorder.addView(recordText, new LinearLayout.LayoutParams(0, -2, 1f));
+        recorder.setContentDescription("Screen recorder tersedia melalui Quick Settings sistem Android.");
+        recorder.setClickable(false);
+        LinearLayout.LayoutParams recorderParams = new LinearLayout.LayoutParams(-1, dp(58));
+        recorderParams.topMargin = dp(5);
+        content.addView(recorder, recorderParams);
+
+        LinearLayout volumeRow = new LinearLayout(this);
+        volumeRow.setGravity(Gravity.CENTER_VERTICAL);
+        volumeRow.setPadding(dp(10), 0, dp(10), 0);
+        volumeRow.setBackground(glassControl(0xFF303030, 24));
+        TextView volumeIcon = text("♫", 18, true);
+        volumeIcon.setGravity(Gravity.CENTER);
+        volumeRow.addView(volumeIcon, new LinearLayout.LayoutParams(dp(34), dp(44)));
+        android.widget.SeekBar volume = new android.widget.SeekBar(this);
+        android.media.AudioManager audio = (android.media.AudioManager) getSystemService(AUDIO_SERVICE);
+        if (audio != null) {
+            volume.setMax(audio.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC));
+            volume.setProgress(audio.getStreamVolume(android.media.AudioManager.STREAM_MUSIC));
+            volume.setOnSeekBarChangeListener(new android.widget.SeekBar.OnSeekBarChangeListener() {
+                @Override public void onProgressChanged(android.widget.SeekBar bar, int progress, boolean fromUser) {
+                    if (fromUser) audio.setStreamVolume(android.media.AudioManager.STREAM_MUSIC, progress, 0);
                 }
-            }).setNegativeButton("Close", null).show();
+                @Override public void onStartTrackingTouch(android.widget.SeekBar bar) { }
+                @Override public void onStopTrackingTouch(android.widget.SeekBar bar) { }
+            });
+        }
+        volumeRow.addView(volume, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        TextView output = text("›", 23, true);
+        output.setGravity(Gravity.CENTER);
+        output.setOnClickListener(v -> openSettingsAction(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS));
+        volumeRow.addView(output, new LinearLayout.LayoutParams(dp(34), dp(44)));
+        LinearLayout.LayoutParams volumeParams = new LinearLayout.LayoutParams(-1, dp(52));
+        volumeParams.topMargin = dp(9);
+        content.addView(volumeRow, volumeParams);
+
+        LinearLayout footer = new LinearLayout(this);
+        footer.setGravity(Gravity.CENTER_VERTICAL);
+        TextView media = text("ᛒ   Bluetooth devices", 12, true);
+        media.setGravity(Gravity.CENTER_VERTICAL);
+        media.setPadding(dp(14), 0, dp(14), 0);
+        media.setBackground(glassControl(0xFF303030, 22));
+        media.setOnClickListener(v -> openSettingsAction(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS));
+        footer.addView(media, new LinearLayout.LayoutParams(0, dp(44), 1f));
+        TextView forkdexTools = text("⋮", 22, true);
+        forkdexTools.setGravity(Gravity.CENTER);
+        forkdexTools.setContentDescription("Alat Forkdex");
+        forkdexTools.setOnClickListener(v -> showForkdexSettings());
+        footer.addView(forkdexTools, new LinearLayout.LayoutParams(dp(42), dp(44)));
+        LinearLayout.LayoutParams footerParams = new LinearLayout.LayoutParams(-1, dp(44));
+        footerParams.topMargin = dp(8);
+        content.addView(footer, footerParams);
+
+        android.widget.ScrollView panelScroll = new android.widget.ScrollView(this);
+        panelScroll.setFillViewport(false);
+        panelScroll.setVerticalScrollBarEnabled(false);
+        panelScroll.addView(content, new android.widget.ScrollView.LayoutParams(-1, -2));
+        panel.addView(panelScroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        boolean portrait = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_PORTRAIT;
+        int screenW = getResources().getDisplayMetrics().widthPixels;
+        int screenH = getResources().getDisplayMetrics().heightPixels;
+        int panelW = portrait ? Math.max(dp(280), screenW - dp(24)) : Math.min(dp(370), screenW - dp(24));
+        int panelH = Math.min(portrait ? dp(540) : dp(500), screenH - dp(92));
+        FrameLayout.LayoutParams panelParams = new FrameLayout.LayoutParams(panelW, panelH,
+                portrait ? Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL : Gravity.BOTTOM | Gravity.RIGHT);
+        panelParams.setMargins(dp(12), dp(12), dp(12), dp(74));
+        quickSettingsOverlay.addView(panel, panelParams);
+        root.addView(quickSettingsOverlay, new FrameLayout.LayoutParams(-1, -1));
+    }
+
+    private LinearLayout.LayoutParams weightedTileParams() {
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, -1, 1f);
+        params.setMargins(0, 0, dp(6), 0);
+        return params;
+    }
+
+    private View createWideQuickTile(String icon, String title, String description, String action) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setGravity(Gravity.CENTER_VERTICAL);
+        tile.setPadding(dp(10), 0, dp(8), 0);
+        tile.setBackground(glassControl(0xFF343434, 22));
+        TextView badge = text(icon, 19, true);
+        badge.setGravity(Gravity.CENTER);
+        badge.setTextColor(Color.WHITE);
+        badge.setBackground(rounded(0xFFF4F4F4, 24));
+        badge.setTextColor(0xFF171717);
+        tile.addView(badge, new LinearLayout.LayoutParams(dp(36), dp(36)));
+        TextView name = text(title, 12, true);
+        name.setPadding(dp(8), 0, 0, 0);
+        name.setMaxLines(1);
+        tile.addView(name, new LinearLayout.LayoutParams(0, -2, 1f));
+        TextView more = text("›", 20, true);
+        more.setGravity(Gravity.CENTER);
+        tile.addView(more, new LinearLayout.LayoutParams(dp(18), -1));
+        tile.setContentDescription(description);
+        tile.setOnClickListener(v -> openSettingsAction(action));
+        return tile;
+    }
+
+    private void addQuickTile(android.widget.GridLayout grid, String icon, String label,
+                              Runnable action) {
+        LinearLayout tile = new LinearLayout(this);
+        tile.setOrientation(LinearLayout.VERTICAL);
+        tile.setGravity(Gravity.CENTER);
+        tile.setBackground(tileSurface(0xFF303030, 18));
+        TextView glyph = text(icon, 18, true);
+        glyph.setGravity(Gravity.CENTER);
+        glyph.setBackground(rounded(0xFFF2F2F2, 24));
+        glyph.setTextColor(0xFF161616);
+        tile.addView(glyph, new LinearLayout.LayoutParams(dp(34), dp(34)));
+        TextView name = text(label, 10, false);
+        name.setGravity(Gravity.CENTER);
+        name.setMaxLines(2);
+        tile.addView(name, new LinearLayout.LayoutParams(-1, dp(32)));
+        tile.setOnClickListener(v -> action.run());
+        android.widget.GridLayout.LayoutParams params = new android.widget.GridLayout.LayoutParams();
+        params.width = 0;
+        params.height = -1;
+        params.columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f);
+        params.setMargins(dp(3), dp(3), dp(3), dp(3));
+        grid.addView(tile, params);
+    }
+
+    private void setQuickSettingsVisible(boolean visible) {
+        quickSettingsVisible = visible;
+        if (quickSettingsOverlay != null) quickSettingsOverlay.setVisibility(visible ? View.VISIBLE : View.GONE);
+    }
+
+    private void toggleDesktopTheme() {
+        localDarkMode = !localDarkMode;
+        if (desktopRoot != null) desktopRoot.setBackgroundColor(localDarkMode ? Color.BLACK : 0xFF17191D);
+        Toast.makeText(this, localDarkMode ? "Tampilan gelap aktif." : "Tampilan gelap nonaktif.",
+                Toast.LENGTH_SHORT).show();
+    }
+
+    private void openSettingsAction(String action) {
+        try {
+            Intent intent = new Intent(action);
+            if (intent.resolveActivity(getPackageManager()) != null) startActivity(intent);
+            else openSystemSettings();
+        } catch (Throwable error) {
+            Toast.makeText(this, "Halaman pengaturan Android tidak tersedia.", Toast.LENGTH_SHORT).show();
+        }
     }
 
     private void toggleWindowMode() {
@@ -1006,6 +1290,10 @@ public final class MainActivity extends Activity {
     }
 
     @Override public void onBackPressed() {
+        if (quickSettingsVisible) {
+            setQuickSettingsVisible(false);
+            return;
+        }
         if (drawerVisible) {
             if (drawerSearch != null && drawerSearch.hasFocus()) {
                 android.view.inputmethod.InputMethodManager keyboard =
@@ -1083,23 +1371,55 @@ public final class MainActivity extends Activity {
     }
 
     private void renderTaskbar(FrameLayout root) {
+        boolean portrait = getResources().getConfiguration().orientation
+                == android.content.res.Configuration.ORIENTATION_PORTRAIT;
         LinearLayout bar = new LinearLayout(this);
         bar.setOrientation(LinearLayout.HORIZONTAL);
         bar.setGravity(Gravity.CENTER_VERTICAL);
-        bar.setPadding(dp(12), dp(7), dp(12), dp(7));
-        bar.setBackground(glassPanel(0xA3121D2C, 32));
-        bar.setElevation(dp(24));
+        bar.setPadding(dp(portrait ? 8 : 14), 0, dp(portrait ? 8 : 14), 0);
+        bar.setBackgroundColor(0xF20E0E0F);
+        bar.setElevation(dp(12));
 
-        ImageView start = new ImageView(this);
-        start.setImageResource(R.drawable.forkdex_logo);
-        start.setScaleType(ImageView.ScaleType.FIT_CENTER);
-        start.setPadding(dp(5), dp(5), dp(5), dp(5));
-        start.setContentDescription("Forkdex — Buka Start");
-        start.setBackground(glassControl(0x784B79C5, 15));
-        addPressMotion(start);
-        start.setOnClickListener(v -> setDrawerVisible(
-                appDrawer == null || appDrawer.getVisibility() != View.VISIBLE));
-        bar.addView(start, new LinearLayout.LayoutParams(dp(46), dp(42)));
+        if (!portrait) {
+            LinearLayout navigation = new LinearLayout(this);
+            navigation.setGravity(Gravity.CENTER_VERTICAL);
+            addTaskbarNavButton(navigation, "Ⅲ", "Jendela terbuka", v -> showWindows());
+            addTaskbarNavButton(navigation, "○", "Desktop", v -> setDrawerVisible(false));
+            addTaskbarNavButton(navigation, "‹", "Kembali", v -> onBackPressed());
+            bar.addView(navigation, new LinearLayout.LayoutParams(dp(126), -1));
+            View divider = new View(this);
+            divider.setBackgroundColor(0x66777777);
+            bar.addView(divider, new LinearLayout.LayoutParams(dp(1), dp(30)));
+        }
+
+        TextView start = text(portrait ? "▦" : "⌕", portrait ? 21 : 23, true);
+        start.setGravity(Gravity.CENTER);
+        start.setTextColor(Color.WHITE);
+        start.setContentDescription(portrait ? "Buka Start" : "Cari aplikasi");
+        start.setBackground(tileSurface(0x00000000, 12));
+        start.setOnClickListener(v -> {
+            setDrawerVisible(true);
+            if (!portrait) focusDrawerSearch();
+        });
+        bar.addView(start, new LinearLayout.LayoutParams(dp(42), dp(44)));
+
+        if (portrait) {
+            TextView recent = text("▣", 17, true);
+            recent.setGravity(Gravity.CENTER);
+            recent.setTextColor(Color.WHITE);
+            recent.setContentDescription("Jendela terbuka");
+            recent.setBackground(tileSurface(0x00000000, 12));
+            recent.setOnClickListener(v -> showWindows());
+            bar.addView(recent, new LinearLayout.LayoutParams(dp(34), dp(44)));
+        } else {
+            TextView appsButton = text("▦", 20, true);
+            appsButton.setGravity(Gravity.CENTER);
+            appsButton.setTextColor(Color.WHITE);
+            appsButton.setContentDescription("Semua aplikasi");
+            appsButton.setBackground(tileSurface(0x00000000, 12));
+            appsButton.setOnClickListener(v -> setDrawerVisible(true));
+            bar.addView(appsButton, new LinearLayout.LayoutParams(dp(42), dp(44)));
+        }
 
         android.widget.HorizontalScrollView scroll = new android.widget.HorizontalScrollView(this);
         scroll.setHorizontalScrollBarEnabled(false);
@@ -1110,49 +1430,62 @@ public final class MainActivity extends Activity {
         taskButtons.setOrientation(LinearLayout.HORIZONTAL);
         taskButtons.setGravity(Gravity.CENTER_VERTICAL);
         scroll.addView(taskButtons, new android.widget.HorizontalScrollView.LayoutParams(-2, -1));
-        LinearLayout.LayoutParams taskParams = new LinearLayout.LayoutParams(0, dp(42), 1f);
-        taskParams.setMargins(dp(10), 0, dp(10), 0);
+        LinearLayout.LayoutParams taskParams = new LinearLayout.LayoutParams(0, -1, 1f);
+        taskParams.setMargins(dp(5), 0, dp(5), 0);
         bar.addView(scroll, taskParams);
 
-        View divider = new View(this);
-        divider.setBackgroundColor(0x667D899B);
-        bar.addView(divider, new LinearLayout.LayoutParams(dp(1), dp(25)));
+        TextView network = text(portrait ? "◔" : "◔   ᛒ", portrait ? 16 : 13, true);
+        network.setTextColor(0xFFF2F2F2);
+        network.setGravity(Gravity.CENTER);
+        network.setContentDescription("Jaringan dan perangkat nirkabel");
+        network.setOnClickListener(v -> showTaskbarPanel());
+        bar.addView(network, new LinearLayout.LayoutParams(dp(portrait ? 34 : 65), dp(42)));
 
-        TextView quick = text("⌃", 18, true);
-        quick.setTextColor(0xFFE8EDF6);
+        TextView quick = text("⌃", 17, true);
+        quick.setTextColor(0xFFF2F2F2);
         quick.setGravity(Gravity.CENTER);
-        quick.setContentDescription("Quick settings Forkdex");
-        quick.setBackground(glassControl(0x6237465B, 14));
+        quick.setContentDescription("Quick settings");
+        quick.setBackground(tileSurface(0x00000000, 12));
         addPressMotion(quick);
         quick.setOnClickListener(v -> showTaskbarPanel());
-        LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(dp(34), dp(34));
-        quickParams.setMargins(dp(10), 0, dp(8), 0);
+        LinearLayout.LayoutParams quickParams = new LinearLayout.LayoutParams(dp(34), dp(42));
+        quickParams.setMargins(dp(2), 0, dp(3), 0);
         bar.addView(quick, quickParams);
 
         LinearLayout clockBox = new LinearLayout(this);
         clockBox.setOrientation(LinearLayout.VERTICAL);
         clockBox.setGravity(Gravity.CENTER);
         taskbarClock = text("--:--", 12, true);
-        taskbarClock.setTextColor(0xFFF1F4F9);
+        taskbarClock.setTextColor(Color.WHITE);
         taskbarClock.setGravity(Gravity.CENTER);
         taskbarDate = text(new java.text.SimpleDateFormat("EEE, d MMM",
                 java.util.Locale.getDefault()).format(new java.util.Date()), 9, false);
-        taskbarDate.setTextColor(0xFFB8C3D3);
+        taskbarDate.setTextColor(0xFFD0D0D0);
         taskbarDate.setGravity(Gravity.CENTER);
         clockBox.addView(taskbarClock);
-        clockBox.addView(taskbarDate);
+        if (!portrait) clockBox.addView(taskbarDate);
         clockBox.setContentDescription("Jam dan tanggal");
         clockBox.setOnClickListener(v -> showTaskbarPanel());
-        bar.addView(clockBox, new LinearLayout.LayoutParams(dp(68), dp(40)));
+        bar.addView(clockBox, new LinearLayout.LayoutParams(dp(portrait ? 48 : 68), dp(44)));
 
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(
-                -1, dp(66), Gravity.BOTTOM);
-        params.setMargins(dp(14), 0, dp(14), dp(10));
+                -1, dp(portrait ? 58 : 56), Gravity.BOTTOM);
         root.addView(bar, params);
         lastTaskbarSignature = null;
         lastTaskbarStatus = null;
         lastTaskRefreshAt = 0L;
         refreshTaskbarTasks();
+    }
+
+    private void addTaskbarNavButton(LinearLayout parent, String glyph, String description,
+                                     View.OnClickListener listener) {
+        TextView button = text(glyph, 19, false);
+        button.setGravity(Gravity.CENTER);
+        button.setTextColor(0xFFE7E7E7);
+        button.setContentDescription(description);
+        button.setBackground(tileSurface(0x00000000, 10));
+        button.setOnClickListener(listener);
+        parent.addView(button, new LinearLayout.LayoutParams(dp(40), dp(44)));
     }
 
     private void refreshTaskbarTasks() {
