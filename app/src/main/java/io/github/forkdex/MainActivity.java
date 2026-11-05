@@ -157,6 +157,9 @@ public final class MainActivity extends Activity {
     private TextView sortButton;
     private TextView viewButton;
     private boolean drawerVisible = false;
+    private float drawerGestureDownX;
+    private float drawerGestureDownY;
+    private boolean drawerGestureEligible;
 
     private void render() {
         // Ask Android to draw the current system wallpaper behind the launcher window.
@@ -992,15 +995,28 @@ public final class MainActivity extends Activity {
     }
 
     @Override public boolean dispatchTouchEvent(android.view.MotionEvent event) {
-        if (event.getActionMasked() == android.view.MotionEvent.ACTION_DOWN
-                && drawerVisible && appDrawer != null) {
-            int[] location = new int[2];
-            appDrawer.getLocationOnScreen(location);
-            boolean inside = event.getRawX() >= location[0]
-                    && event.getRawX() < location[0] + appDrawer.getWidth()
-                    && event.getRawY() >= location[1]
-                    && event.getRawY() < location[1] + appDrawer.getHeight();
-            if (!inside) setDrawerVisible(false);
+        int action = event.getActionMasked();
+        if (action == android.view.MotionEvent.ACTION_DOWN) {
+            drawerGestureDownX = event.getRawX();
+            drawerGestureDownY = event.getRawY();
+            drawerGestureEligible = !drawerVisible
+                    && drawerGestureDownY > getResources().getDisplayMetrics().heightPixels * 0.55f;
+            if (drawerVisible && appDrawer != null) {
+                int[] location = new int[2];
+                appDrawer.getLocationOnScreen(location);
+                boolean inside = event.getRawX() >= location[0]
+                        && event.getRawX() < location[0] + appDrawer.getWidth()
+                        && event.getRawY() >= location[1]
+                        && event.getRawY() < location[1] + appDrawer.getHeight();
+                if (!inside) setDrawerVisible(false);
+            }
+        } else if (action == android.view.MotionEvent.ACTION_UP && drawerGestureEligible) {
+            float dx = event.getRawX() - drawerGestureDownX;
+            float dy = event.getRawY() - drawerGestureDownY;
+            if (dy < -dp(90) && Math.abs(dx) < dp(100)) setDrawerVisible(true);
+            drawerGestureEligible = false;
+        } else if (action == android.view.MotionEvent.ACTION_CANCEL) {
+            drawerGestureEligible = false;
         }
         return super.dispatchTouchEvent(event);
     }
@@ -1656,6 +1672,34 @@ public final class MainActivity extends Activity {
             shizuku.setOnChanged(() -> runOnUiThread(this::showShizukuStatus));
             if (shizuku.hasPermission()) windowClient.connect();
         }
+        // Re-apply persisted task density when returning from an app or system dialog.
+        taskbarHandler.postDelayed(this::restoreSavedTaskDensities, 650L);
+    }
+
+    private void restoreSavedTaskDensities() {
+        if (!activityResumed || profiles == null || shizuku == null || !shizuku.hasPermission()) return;
+        if (!windowClient.isConnected()) windowClient.connect();
+        new Thread(() -> {
+            for (ResolveInfo app : new ArrayList<>(apps)) {
+                String pkg = app.activityInfo.packageName;
+                int percent = profiles.getInt(pkg, 100);
+                if (percent == 100) continue;
+                try {
+                    if (!windowClient.isConnected()) {
+                        Thread.sleep(250L);
+                        continue;
+                    }
+                    String result = windowClient.setPackageDensity(currentDisplayId(), pkg,
+                            densityForPercent(percent));
+                    if (result != null && result.startsWith("TASK_DENSITY_APPLIED:")) {
+                        ForkdexErrorLog.add(this, "Per-App DPI restored on launcher resume",
+                                pkg + " • " + percent + "% • " + result);
+                    }
+                } catch (Throwable error) {
+                    ForkdexErrorLog.add(this, "Per-App DPI restore failed", pkg + " • " + error);
+                }
+            }
+        }, "Forkdex-DPI-Resume-Restore").start();
     }
 
     @Override public void onConfigurationChanged(android.content.res.Configuration configuration) {
@@ -1717,8 +1761,10 @@ public final class MainActivity extends Activity {
                     int density = Math.max(72, Math.round(getResources().getDisplayMetrics().densityDpi * percent / 100f));
                     applyProfileDensity(pkg, density);
                 }
-            }).setNeutralButton("System Density", (d, w) -> profiles.edit().remove(pkg).apply())
-            .setNegativeButton("Batal", null).show();
+            }).setNeutralButton("System Density", (d, w) -> {
+                profiles.edit().remove(pkg).apply();
+                applyProfileDensity(pkg, 0);
+            }).setNegativeButton("Batal", null).show();
     }
 
     private int densityForPercent(int percent) {
