@@ -1,13 +1,21 @@
 # TODO — Rombak UI ForkDex
 
-## [ ] Desktop shell visual bergaya Samsung DeX
+## [x] Desktop shell visual bergaya Samsung DeX
 
-**Kriteria pengguna:** “buka repo forkdex ubah seluruh tampilan ui nya jadi kayak Gini harus sama persiis dengan Samsung dex rombak total support landscape maupun portrait”. Gunakan screenshot yang diberikan sebagai panduan visual: desktop hitam/dark, ikon aplikasi di area desktop, taskbar penuh di bagian bawah, elemen navigasi di kiri, aplikasi/task di tengah, waktu dan status di kanan, serta panel Quick Settings dark di kanan. Rombak komposisi UI aplikasi ForkDex agar sedekat mungkin dengan susunan dan gaya Samsung DeX tanpa memakai logo/asset Samsung atau mengaku sebagai UI sistem Samsung.
+**Kriteria pengguna:** “buka repo forkdex ubah seluruh tampilan ui nya jadi kayak Gini harus sama persiis dengan Samsung dex rombak total support landscape maupun portrait”. Implementasi mengikuti susunan referensi yang diberikan: desktop gelap dengan shortcut aplikasi, taskbar penuh di bawah, navigasi kiri, aplikasi/task di tengah, jam/Quick Settings di kanan, serta panel Quick Settings grafit. Ini adalah reproduksi visual independen—bukan system UI Samsung dan tidak memakai logo/asset resmi Samsung.
 
-## [ ] Tata letak responsif landscape dan portrait
+## [x] Tata letak responsif landscape dan portrait
 
-Desktop harus mendukung landscape maupun portrait. Landscape mempertahankan deretan shortcut yang berpusat dan taskbar horizontal bawah. Portrait menata ikon aplikasi menjadi grid yang muat layar, menjaga taskbar dapat dipakai, dan menyusun Quick Settings sebagai panel lebar/bottom sheet. Rotasi tidak boleh menghapus teks pencarian, status drawer, preferensi, atau fitur launcher.
+Landscape menggunakan deretan shortcut desktop dan taskbar horizontal. Portrait menggunakan grid shortcut, taskbar ringkas dengan akses Jendela berjalan, dan Quick Settings sebagai panel lebar. Rotasi merender ulang layout dan mempertahankan query serta status drawer yang sudah ada.
 
-## [ ] Quick Settings serta fitur ForkDex yang ada
+## [x] Quick Settings dan fitur ForkDex yang ada
 
-Quick Settings ditampilkan sebagai panel desktop bergaya DeX dengan kartu Wi-Fi/Bluetooth dan grid akses Sound, Mobile Data, DeX, Dark mode, Screen recorder, serta volume/media. Aksi radio/brightness/recording harus menuju API/panel Android resmi jika launcher tidak berhak mengubahnya secara langsung. Pertahankan Start/app drawer, app pins, task switcher, konfigurasi Freeform/window, Shizuku, Per-App DPI, secondary display dan power options.
+Panel mempunyai kartu Wi-Fi/Bluetooth, Sound, Mobile data, Forkdex Desktop Mode, tema gelap Forkdex, Screen recorder yang menjelaskan penggunaan Quick Settings sistem Android, kontrol volume, Bluetooth devices, dan menu alat ForkDex. Perubahan radio, perekaman, dan fungsi sistem tetap dikelola Android; Forkdex tidak mengklaim mengubah fitur yang dibatasi OS. Start, pin, task switcher, Shizuku/freeform, Per-App DPI dan fungsi yang sudah ada tetap dipertahankan.
+
+## [x] Validasi build CI
+
+GitHub Actions run [42097566873](https://github.com/kerenpandi71-collab/forkdex/actions/runs/42097566873) berhasil menjalankan unit test, kompilasi APK debug, dan upload artifact pada commit `cf5705a` di branch `feature/dex-responsive-ui`.
+
+## [ ] Uji perangkat nyata
+
+Masih perlu memeriksa ukuran ikon, safe area/system bars, interaksi layar sentuh, panel settings, dan behavior freeform pada perangkat Android secara nyata dalam orientasi portrait dan landscape serta pada virtual/extended display bila tersedia.
