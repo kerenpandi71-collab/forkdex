@@ -922,21 +922,22 @@ public final class MainActivity extends Activity {
     }
 
     private void showTaskbarPanel() {
-        String[] actions = {"Per-App DPI", "Shizuku", "Log diagnostik", "Jendela berjalan",
-                "Desktop Mode", "Kembali ke mode normal",
+        String[] actions = {"Internet & konektivitas", "Per-App DPI", "Shizuku",
+                "Log diagnostik", "Jendela berjalan", "Desktop Mode", "Kembali ke mode normal",
                 getSharedPreferences("desktop_preferences", MODE_PRIVATE).getBoolean("freeform_enabled", true)
                         ? "Mode jendela: Freeform (ketuk untuk Normal)"
                         : "Mode jendela: Normal (ketuk untuk Freeform)"};
         new AlertDialog.Builder(this).setTitle("Quick settings  •  Forkdex")
             .setItems(actions, (dialog, which) -> {
                 switch (which) {
-                    case 0: showProfiles(); break;
-                    case 1: showShizukuDialog(); break;
-                    case 2: showErrorLogs(); break;
-                    case 3: showWindows(); break;
-                    case 4: showDesktopModeSetup(); break;
-                    case 6: toggleWindowMode(); break;
-                    case 5:
+                    case 0: openConnectivityPanel(); break;
+                    case 1: showProfiles(); break;
+                    case 2: showShizukuDialog(); break;
+                    case 3: showErrorLogs(); break;
+                    case 4: showWindows(); break;
+                    case 5: showDesktopModeSetup(); break;
+                    case 7: toggleWindowMode(); break;
+                    case 6:
                         if (currentDisplayId() != Display.DEFAULT_DISPLAY) {
                             Toast.makeText(this, "Pilih Home launcher normal pada layar utama Android.", Toast.LENGTH_LONG).show();
                             finish();
@@ -947,6 +948,23 @@ public final class MainActivity extends Activity {
                         break;
                 }
             }).setNegativeButton("Close", null).show();
+    }
+
+    private void openConnectivityPanel() {
+        try {
+            if (Build.VERSION.SDK_INT >= 29) {
+                Intent panel = new Intent(android.provider.Settings.Panel.ACTION_INTERNET_CONNECTIVITY);
+                if (panel.resolveActivity(getPackageManager()) != null) {
+                    startActivity(panel);
+                    return;
+                }
+            }
+            startActivity(new Intent(android.provider.Settings.ACTION_WIFI_SETTINGS));
+        } catch (Throwable error) {
+            ForkdexErrorLog.add(this, "Open connectivity quick settings", error);
+            Toast.makeText(this, "Panel konektivitas tidak tersedia di ROM ini.",
+                    Toast.LENGTH_LONG).show();
+        }
     }
 
     private void toggleWindowMode() {
