@@ -291,15 +291,15 @@ public final class MainActivity extends Activity {
             while (index < entries.size()) {
                 LinearLayout row = new LinearLayout(this);
                 row.setOrientation(LinearLayout.HORIZONTAL);
-                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(116));
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(142));
                 rowLp.setMargins(0, 0, 0, dp(7));
                 int rowStart = index;
                 for (int column = 0; column < 2 && index < entries.size(); column++, index++) {
                     Object entry = entries.get(index);
                     LinearLayout tile = new LinearLayout(this);
                     tile.setOrientation(LinearLayout.VERTICAL);
-                    tile.setGravity(Gravity.BOTTOM | Gravity.LEFT);
-                    tile.setPadding(dp(12), dp(10), dp(10), dp(10));
+                    tile.setGravity(Gravity.CENTER);
+                    tile.setPadding(dp(6), dp(6), dp(6), dp(6));
                     tile.setBackground(new android.graphics.drawable.RippleDrawable(
                             android.content.res.ColorStateList.valueOf(0x33FFFFFF),
                             glassPanel(0x55202A38, 22), rounded(0x22FFFFFF, 22)));
@@ -316,16 +316,21 @@ public final class MainActivity extends Activity {
                         tile.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
                     }
                     icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
-                    tile.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+                    icon.setAdjustViewBounds(true);
+                    LinearLayout.LayoutParams iconLp = new LinearLayout.LayoutParams(dp(88), dp(88));
+                    iconLp.gravity = Gravity.CENTER_HORIZONTAL;
+                    tile.addView(icon, iconLp);
                     String labelText = entry instanceof ResolveInfo
                             ? ((ResolveInfo) entry).loadLabel(getPackageManager()).toString()
                             : String.valueOf(((LauncherActivityInfo) entry).getLabel());
                     TextView label = text(labelText, 13, true);
                     label.setTextColor(Color.WHITE);
-                    label.setMaxLines(2);
+                    label.setMaxLines(1);
+                    label.setEllipsize(android.text.TextUtils.TruncateAt.END);
+                    label.setGravity(Gravity.CENTER);
                     label.setShadowLayer(2f, 0f, 1f, 0x66000000);
                     LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
-                    labelLp.topMargin = dp(7);
+                    labelLp.topMargin = dp(5);
                     tile.addView(label, labelLp);
                     addPressMotion(tile);
                     LinearLayout.LayoutParams tileLp = new LinearLayout.LayoutParams(0, -1, 1f);
