@@ -193,12 +193,174 @@ public final class MainActivity extends Activity {
             desktopRoot.addView(displayLabel, labelParams);
         }
 
-        renderTaskbar(desktopRoot);
-        createAppDrawer();
-        setDrawerVisible(drawerVisible);
+        renderWindowsPhoneHome(desktopRoot);
     }
 
     private LinearLayout pinnedApps;
+
+
+    /** Windows Phone-inspired Start Screen. The recent-task dock is intentionally absent. */
+    private void renderWindowsPhoneHome(FrameLayout root) {
+        LinearLayout page = new LinearLayout(this);
+        page.setOrientation(LinearLayout.VERTICAL);
+        page.setPadding(dp(18), dp(18), dp(18), dp(12));
+
+        LinearLayout header = new LinearLayout(this);
+        header.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout titles = new LinearLayout(this);
+        titles.setOrientation(LinearLayout.VERTICAL);
+        TextView brand = text("FORKDEX", 25, true);
+        brand.setTextColor(Color.WHITE);
+        TextView subtitle = text("START  •  " + new java.text.SimpleDateFormat(
+                "EEEE, d MMMM", java.util.Locale.getDefault()).format(new java.util.Date()),
+                11, false);
+        subtitle.setTextColor(0xFFD6E3F5);
+        titles.addView(brand);
+        titles.addView(subtitle);
+        header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
+
+        TextView control = text("⚙", 23, true);
+        control.setTextColor(Color.WHITE);
+        control.setGravity(Gravity.CENTER);
+        control.setBackground(tileSurface(0xFF344B68, 4));
+        control.setContentDescription("Pengaturan Forkdex");
+        control.setOnClickListener(v -> showLauncherOptions());
+        header.addView(control, new LinearLayout.LayoutParams(dp(48), dp(48)));
+
+        TextView quick = text("⋯", 24, true);
+        quick.setTextColor(Color.WHITE);
+        quick.setGravity(Gravity.CENTER);
+        quick.setBackground(tileSurface(0xFF344B68, 4));
+        quick.setContentDescription("Kontrol Forkdex");
+        quick.setOnClickListener(v -> showTaskbarPanel());
+        LinearLayout.LayoutParams quickLp = new LinearLayout.LayoutParams(dp(48), dp(48));
+        quickLp.setMargins(dp(8), 0, 0, 0);
+        header.addView(quick, quickLp);
+        page.addView(header);
+
+        EditText search = new EditText(this);
+        drawerSearch = search;
+        search.setSingleLine(true);
+        search.setTextSize(15);
+        search.setHint("Cari aplikasi");
+        search.setHintTextColor(0xFFCBD6E5);
+        search.setTextColor(Color.WHITE);
+        search.setPadding(dp(14), 0, dp(14), 0);
+        search.setBackground(rounded(0x6633445D, 4));
+        search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
+        LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(48));
+        searchLp.setMargins(0, dp(18), 0, dp(16));
+        page.addView(search, searchLp);
+
+        TextView section = text("APLIKASI", 12, true);
+        section.setTextColor(0xFFE3ECF8);
+        LinearLayout.LayoutParams sectionLp = new LinearLayout.LayoutParams(-1, dp(28));
+        page.addView(section, sectionLp);
+
+        android.widget.ScrollView scroll = new android.widget.ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.setVerticalScrollBarEnabled(false);
+        LinearLayout tileRows = new LinearLayout(this);
+        tileRows.setOrientation(LinearLayout.VERTICAL);
+        scroll.addView(tileRows, new android.widget.ScrollView.LayoutParams(-1, -2));
+        page.addView(scroll, new LinearLayout.LayoutParams(-1, 0, 1f));
+
+        Runnable populate = () -> {
+            tileRows.removeAllViews();
+            String query = search.getText().toString().trim().toLowerCase(
+                    java.util.Locale.getDefault());
+            List<Object> entries = new ArrayList<>();
+            for (ResolveInfo app : apps) {
+                if (!isHiddenApp(app.activityInfo.packageName)
+                        && app.loadLabel(getPackageManager()).toString().toLowerCase(
+                        java.util.Locale.getDefault()).contains(query)) entries.add(app);
+            }
+            for (LauncherActivityInfo clone : clonedApps) {
+                String label = clone.getLabel() == null ? "" : clone.getLabel().toString();
+                if (!isHiddenApp(clone.getComponentName().getPackageName())
+                        && label.toLowerCase(java.util.Locale.getDefault()).contains(query))
+                    entries.add(clone);
+            }
+            final int[] colors = {0xFF1769AA, 0xFF6045A5, 0xFF008A80, 0xFFB34B26,
+                    0xFF527A28, 0xFFAA337A, 0xFF287A9B, 0xFF76552A};
+            int index = 0;
+            while (index < entries.size()) {
+                LinearLayout row = new LinearLayout(this);
+                row.setOrientation(LinearLayout.HORIZONTAL);
+                LinearLayout.LayoutParams rowLp = new LinearLayout.LayoutParams(-1, dp(116));
+                rowLp.setMargins(0, 0, 0, dp(7));
+                int rowStart = index;
+                for (int column = 0; column < 2 && index < entries.size(); column++, index++) {
+                    Object entry = entries.get(index);
+                    int color = colors[(index + (index / 2)) % colors.length];
+                    LinearLayout tile = new LinearLayout(this);
+                    tile.setOrientation(LinearLayout.VERTICAL);
+                    tile.setGravity(Gravity.BOTTOM | Gravity.LEFT);
+                    tile.setPadding(dp(12), dp(10), dp(10), dp(10));
+                    tile.setBackground(tileSurface(color, 3));
+                    ImageView icon = new ImageView(this);
+                    if (entry instanceof ResolveInfo) {
+                        ResolveInfo app = (ResolveInfo) entry;
+                        icon.setImageDrawable(app.loadIcon(getPackageManager()));
+                        tile.setOnClickListener(v -> launchSelectedApp(app));
+                        tile.setOnLongClickListener(v -> { showAppActions(app); return true; });
+                    } else {
+                        LauncherActivityInfo clone = (LauncherActivityInfo) entry;
+                        icon.setImageDrawable(clone.getIcon(0));
+                        tile.setOnClickListener(v -> launchClonedApp(clone));
+                        tile.setOnLongClickListener(v -> { showClonedAppActions(clone); return true; });
+                    }
+                    icon.setScaleType(ImageView.ScaleType.FIT_CENTER);
+                    tile.addView(icon, new LinearLayout.LayoutParams(dp(42), dp(42)));
+                    String labelText = entry instanceof ResolveInfo
+                            ? ((ResolveInfo) entry).loadLabel(getPackageManager()).toString()
+                            : String.valueOf(((LauncherActivityInfo) entry).getLabel());
+                    TextView label = text(labelText, 13, true);
+                    label.setTextColor(Color.WHITE);
+                    label.setMaxLines(2);
+                    label.setShadowLayer(2f, 0f, 1f, 0x66000000);
+                    LinearLayout.LayoutParams labelLp = new LinearLayout.LayoutParams(-1, -2);
+                    labelLp.topMargin = dp(7);
+                    tile.addView(label, labelLp);
+                    addPressMotion(tile);
+                    LinearLayout.LayoutParams tileLp = new LinearLayout.LayoutParams(0, -1, 1f);
+                    tileLp.setMargins(dp(2), dp(2), dp(2), dp(2));
+                    row.addView(tile, tileLp);
+                }
+                if (index == rowStart + 1) {
+                    View spacer = new View(this);
+                    row.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+                }
+                tileRows.addView(row, rowLp);
+            }
+            if (entries.isEmpty()) {
+                TextView empty = text("Tidak ada aplikasi yang cocok.", 14, false);
+                empty.setTextColor(Color.WHITE);
+                empty.setPadding(dp(12), dp(20), dp(12), dp(20));
+                tileRows.addView(empty);
+            }
+            section.setText("APLIKASI  •  " + entries.size());
+        };
+        search.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int start, int count, int after) { }
+            public void onTextChanged(CharSequence s, int start, int before, int count) { populate.run(); }
+            public void afterTextChanged(android.text.Editable s) { }
+        });
+        search.setOnEditorActionListener((v, actionId, event) -> {
+            if (actionId == android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH) {
+                android.view.inputmethod.InputMethodManager keyboard =
+                        (android.view.inputmethod.InputMethodManager) getSystemService(INPUT_METHOD_SERVICE);
+                if (keyboard != null) keyboard.hideSoftInputFromWindow(search.getWindowToken(), 0);
+                search.clearFocus();
+                return true;
+            }
+            return false;
+        });
+        populate.run();
+
+        FrameLayout.LayoutParams pageLp = new FrameLayout.LayoutParams(-1, -1);
+        root.addView(page, pageLp);
+    }
 
     private void createAppDrawer() {
         appDrawer = new LinearLayout(this);
