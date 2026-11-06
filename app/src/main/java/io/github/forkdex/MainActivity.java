@@ -168,7 +168,13 @@ public final class MainActivity extends Activity {
         try {
             getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER);
             getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(Color.TRANSPARENT));
-            getWindow().setDimAmount(0f);
+            getWindow().setDimAmount(0.04f);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                android.view.WindowManager.LayoutParams glassParams = getWindow().getAttributes();
+                glassParams.flags |= android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
+                glassParams.setBlurBehindRadius(dp(14));
+                getWindow().setAttributes(glassParams);
+            }
         } catch (Throwable error) {
             ForkdexErrorLog.add(this, "Enable system wallpaper background", error);
         }
@@ -210,11 +216,11 @@ public final class MainActivity extends Activity {
         LinearLayout titles = new LinearLayout(this);
         titles.setOrientation(LinearLayout.VERTICAL);
         TextView brand = text("FORKDEX", 25, true);
-        brand.setTextColor(Color.WHITE);
+        brand.setTextColor(0xFFF7FAFF);
         TextView subtitle = text("START  •  " + new java.text.SimpleDateFormat(
                 "EEEE, d MMMM", java.util.Locale.getDefault()).format(new java.util.Date()),
                 11, false);
-        subtitle.setTextColor(0xFFD6E3F5);
+        subtitle.setTextColor(0xFFD9E1EC);
         titles.addView(brand);
         titles.addView(subtitle);
         header.addView(titles, new LinearLayout.LayoutParams(0, -2, 1f));
@@ -222,7 +228,7 @@ public final class MainActivity extends Activity {
         TextView control = text("⚙", 23, true);
         control.setTextColor(Color.WHITE);
         control.setGravity(Gravity.CENTER);
-        control.setBackground(tileSurface(0xFF344B68, 4));
+        control.setBackground(glassControl(0x55202A38, 18));
         control.setContentDescription("Pengaturan Forkdex");
         control.setOnClickListener(v -> showLauncherOptions());
         header.addView(control, new LinearLayout.LayoutParams(dp(48), dp(48)));
@@ -230,7 +236,7 @@ public final class MainActivity extends Activity {
         TextView quick = text("⋯", 24, true);
         quick.setTextColor(Color.WHITE);
         quick.setGravity(Gravity.CENTER);
-        quick.setBackground(tileSurface(0xFF344B68, 4));
+        quick.setBackground(glassControl(0x55202A38, 18));
         quick.setContentDescription("Kontrol Forkdex");
         quick.setOnClickListener(v -> showTaskbarPanel());
         LinearLayout.LayoutParams quickLp = new LinearLayout.LayoutParams(dp(48), dp(48));
@@ -246,14 +252,14 @@ public final class MainActivity extends Activity {
         search.setHintTextColor(0xFFCBD6E5);
         search.setTextColor(Color.WHITE);
         search.setPadding(dp(14), 0, dp(14), 0);
-        search.setBackground(rounded(0x6633445D, 4));
+        search.setBackground(glassPanel(0x66202A38, 22));
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(48));
         searchLp.setMargins(0, dp(18), 0, dp(16));
         page.addView(search, searchLp);
 
         TextView section = text("APLIKASI", 12, true);
-        section.setTextColor(0xFFE3ECF8);
+        section.setTextColor(0xFFEAF0F7);
         LinearLayout.LayoutParams sectionLp = new LinearLayout.LayoutParams(-1, dp(28));
         page.addView(section, sectionLp);
 
@@ -281,8 +287,6 @@ public final class MainActivity extends Activity {
                         && label.toLowerCase(java.util.Locale.getDefault()).contains(query))
                     entries.add(clone);
             }
-            final int[] colors = {0xFF1769AA, 0xFF6045A5, 0xFF008A80, 0xFFB34B26,
-                    0xFF527A28, 0xFFAA337A, 0xFF287A9B, 0xFF76552A};
             int index = 0;
             while (index < entries.size()) {
                 LinearLayout row = new LinearLayout(this);
@@ -292,12 +296,13 @@ public final class MainActivity extends Activity {
                 int rowStart = index;
                 for (int column = 0; column < 2 && index < entries.size(); column++, index++) {
                     Object entry = entries.get(index);
-                    int color = colors[(index + (index / 2)) % colors.length];
                     LinearLayout tile = new LinearLayout(this);
                     tile.setOrientation(LinearLayout.VERTICAL);
                     tile.setGravity(Gravity.BOTTOM | Gravity.LEFT);
                     tile.setPadding(dp(12), dp(10), dp(10), dp(10));
-                    tile.setBackground(tileSurface(color, 3));
+                    tile.setBackground(new android.graphics.drawable.RippleDrawable(
+                            android.content.res.ColorStateList.valueOf(0x33FFFFFF),
+                            glassPanel(0x55202A38, 22), rounded(0x22FFFFFF, 22)));
                     ImageView icon = new ImageView(this);
                     if (entry instanceof ResolveInfo) {
                         ResolveInfo app = (ResolveInfo) entry;
@@ -324,7 +329,7 @@ public final class MainActivity extends Activity {
                     tile.addView(label, labelLp);
                     addPressMotion(tile);
                     LinearLayout.LayoutParams tileLp = new LinearLayout.LayoutParams(0, -1, 1f);
-                    tileLp.setMargins(dp(2), dp(2), dp(2), dp(2));
+                    tileLp.setMargins(dp(4), dp(3), dp(4), dp(3));
                     row.addView(tile, tileLp);
                 }
                 if (index == rowStart + 1) {
