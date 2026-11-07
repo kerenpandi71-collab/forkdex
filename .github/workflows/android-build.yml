@@ -25,7 +25,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Configure Android SDK path
         run: |
-          CMDLINE_TOOLS=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' | sort -V | tail -n 1)
+          CMDLINE_TOOLS=$(find "$ANDROID_SDK_ROOT/cmdline-tools" -mindepth 1 -maxdepth 1 -type d -printf '%f\\n' | sort -V | tail -n 1)
           echo "$ANDROID_SDK_ROOT/cmdline-tools/$CMDLINE_TOOLS/bin" >> "$GITHUB_PATH"
           echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
       - name: Accept Android SDK licenses
@@ -34,10 +34,29 @@ jobs:
         run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
       - name: Run unit tests
         run: ./gradlew --no-daemon :app:testDebugUnitTest
-      - name: Compile and package debug APK
-        run: ./gradlew --no-daemon :app:assembleDebug
+      - name: Prepare persistent signing key
+        env:
+          FORKDEX_KEYSTORE_BASE64: ${{ secrets.FORKDEX_KEYSTORE_BASE64 }}
+          FORKDEX_KEYSTORE_PASSWORD: ${{ secrets.FORKDEX_KEYSTORE_PASSWORD }}
+          FORKDEX_KEY_ALIAS: ${{ secrets.FORKDEX_KEY_ALIAS }}
+          FORKDEX_KEY_PASSWORD: ${{ secrets.FORKDEX_KEY_PASSWORD }}
+        run: |
+          test -n "$FORKDEX_KEYSTORE_BASE64"
+          test -n "$FORKDEX_KEYSTORE_PASSWORD"
+          test -n "$FORKDEX_KEY_ALIAS"
+          test -n "$FORKDEX_KEY_PASSWORD"
+          mkdir -p "$RUNNER_TEMP/forkdex-signing"
+          printf '%s' "$FORKDEX_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/forkdex-signing/forkdex-release.jks"
+          test -s "$RUNNER_TEMP/forkdex-signing/forkdex-release.jks"
+          echo "FORKDEX_KEYSTORE_PATH=$RUNNER_TEMP/forkdex-signing/forkdex-release.jks" >> "$GITHUB_ENV"
+      - name: Compile and package signed release APK
+        env:
+          FORKDEX_KEYSTORE_PASSWORD: ${{ secrets.FORKDEX_KEYSTORE_PASSWORD }}
+          FORKDEX_KEY_ALIAS: ${{ secrets.FORKDEX_KEY_ALIAS }}
+          FORKDEX_KEY_PASSWORD: ${{ secrets.FORKDEX_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon :app:assembleRelease
       - uses: actions/upload-artifact@v4
         with:
-          name: Forkdex-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: Forkdex-release
+          path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
