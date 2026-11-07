@@ -28,6 +28,13 @@ android {
         }
     }
 
+    // The freeform service intentionally uses a hidden system API through
+    // Shizuku. Keep the implementation intact and suppress only this lint
+    // diagnostic; runtime behavior is unchanged.
+    lint {
+        disable += ['BlockedPrivateApi']
+    }
+
     buildFeatures {
         aidl true
     }
