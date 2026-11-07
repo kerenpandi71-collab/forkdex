@@ -172,7 +172,7 @@ public final class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 android.view.WindowManager.LayoutParams glassParams = getWindow().getAttributes();
                 glassParams.flags |= android.view.WindowManager.LayoutParams.FLAG_BLUR_BEHIND;
-                glassParams.setBlurBehindRadius(dp(14));
+                glassParams.setBlurBehindRadius(dp(8));
                 getWindow().setAttributes(glassParams);
             }
         } catch (Throwable error) {
@@ -210,6 +210,16 @@ public final class MainActivity extends Activity {
         LinearLayout page = new LinearLayout(this);
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(18), dp(18), dp(18), dp(12));
+        page.setOnApplyWindowInsetsListener((view, insets) -> {
+            int bottomInset;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                bottomInset = insets.getInsets(android.view.WindowInsets.Type.navigationBars()).bottom;
+            } else {
+                bottomInset = insets.getSystemWindowInsetBottom();
+            }
+            view.setPadding(dp(18), dp(18), dp(18), dp(12) + bottomInset);
+            return insets;
+        });
 
         LinearLayout header = new LinearLayout(this);
         header.setGravity(Gravity.CENTER_VERTICAL);
@@ -252,7 +262,7 @@ public final class MainActivity extends Activity {
         search.setHintTextColor(0xFFCBD6E5);
         search.setTextColor(Color.WHITE);
         search.setPadding(dp(14), 0, dp(14), 0);
-        search.setBackground(glassPanel(0x66202A38, 22));
+        search.setBackground(glassPanel(0x55202A38, 22));
         search.setImeOptions(android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH);
         LinearLayout.LayoutParams searchLp = new LinearLayout.LayoutParams(-1, dp(48));
         searchLp.setMargins(0, dp(18), 0, dp(16));
@@ -302,7 +312,7 @@ public final class MainActivity extends Activity {
                     tile.setPadding(dp(6), dp(6), dp(6), dp(6));
                     tile.setBackground(new android.graphics.drawable.RippleDrawable(
                             android.content.res.ColorStateList.valueOf(0x33FFFFFF),
-                            glassPanel(0x55202A38, 22), rounded(0x22FFFFFF, 22)));
+                            glassPanel(0x44202A38, 22), rounded(0x22FFFFFF, 22)));
                     ImageView icon = new ImageView(this);
                     if (entry instanceof ResolveInfo) {
                         ResolveInfo app = (ResolveInfo) entry;
